@@ -735,7 +735,7 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
         // Use higher alphaTest to clip semi-transparent edge fringe cleanly.
         // If <8% removed (complex background): still use the photo but scale down
         // so it doesn't dominate — the bird is still visible, just with background.
-        const goodCutout=removedFrac>=0.08;
+        const goodCutout=removedFrac>=0.12;
         const mat=new THREE.SpriteMaterial({
           map:tex, transparent:true,
           alphaTest: goodCutout ? 0.25 : 0.1,
@@ -744,9 +744,9 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
         if(spr.material.map) spr.material.map.dispose();
         spr.material.dispose();
         spr.material=mat;
-        // Good cutout: natural aspect ratio at full size so bird shape is preserved.
-        // Weak cutout: slightly smaller so residual background is less prominent.
-        const h=goodCutout?0.32:0.24;
+        // Good cutout: natural aspect ratio — bird appears directly on globe.
+        // Weak cutout: scaled down so background remnant stays unobtrusive.
+        const h=goodCutout?0.26:0.15;
         spr.scale.set(h*aspect,h,1);
       }catch(e){} // SecurityError from tainted canvas → keep colored dot
     };
