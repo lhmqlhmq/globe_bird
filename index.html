@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>万羽拾音 | Bird Planet</title>
+<title>Bird Planet</title>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
 *{margin:0;padding:0;box-sizing:border-box}
@@ -60,24 +60,33 @@ canvas{display:block;width:100%;height:100%;position:fixed;inset:0}
 #fn button:hover{background:rgba(255,255,255,.08);color:#ccc}
 #fn button.on{background:rgba(200,184,138,.12);border-color:rgba(200,184,138,.2);color:#e8d8a8}
 #credits{position:fixed;bottom:5px;right:10px;font-size:.5rem;color:#333;z-index:5}
+#lang-btn{position:fixed;top:clamp(12px,2vh,20px);right:clamp(12px,2vw,20px);z-index:30;background:rgba(200,184,138,.1);border:1px solid rgba(200,184,138,.2);color:#c8b88a;font-size:.65rem;padding:5px 12px;border-radius:14px;cursor:pointer;letter-spacing:.08em;font-family:inherit;transition:all .2s}
+#lang-btn:hover{background:rgba(200,184,138,.2);color:#e8d8a8}
 #file-warn{display:none;position:fixed;top:0;left:0;right:0;z-index:3000;background:rgba(180,90,0,.95);color:#fff;font-size:.78rem;text-align:center;padding:8px 16px;letter-spacing:.02em;line-height:1.5}
 #file-warn strong{color:#ffe066}
 #file-warn button{margin-left:14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:2px 10px;border-radius:10px;cursor:pointer;font-size:.72rem}
 </style>
 </head>
 <body>
-<div id="file-warn">⚠ 检测到 <strong>file://</strong> 协议 — 鸟鸣音频与部分鸟类照片无法加载（受浏览器 CORS 限制）。请用本地服务器访问：<strong>http://localhost:8765/bird-planet.html</strong><button onclick="document.getElementById('file-warn').style.display='none'">✕ 关闭</button></div>
-<div id="loading"><h1>万 羽 拾 音</h1><div class="sub">Bird Planet</div><div class="bar-wrap"><div class="bar" id="lbar"></div></div><div class="hint">正在构建鸟类星球...</div></div>
-<div id="title"><h1>万 羽 拾 音</h1><div class="count" id="cnt">Loading...</div></div>
+<div id="file-warn">⚠ <span id="fw-zh">检测到 <strong>file://</strong> 协议 — 鸟鸣音频无法加载。请用服务器访问：<strong>http://localhost:8765/bird-planet.html</strong></span><span id="fw-en" style="display:none">⚠ Detected <strong>file://</strong> protocol — bird sounds disabled (CORS). Open via: <strong>http://localhost:8765/bird-planet.html</strong></span><button onclick="document.getElementById('file-warn').style.display='none'">✕</button></div>
+<div id="loading"><h1>Bird Planet</h1><div class="sub">Bird Planet</div><div class="bar-wrap"><div class="bar" id="lbar"></div></div><div class="hint">正在构建鸟类星球...</div></div>
+<div id="title"><h1 id="title-h1">Bird Planet</h1><div class="count" id="cnt">Loading...</div></div>
 <canvas id="c"></canvas>
 <div id="tip"><div class="z"></div><div class="e"></div></div>
 <div id="popup"><button class="x" id="pop-close">×</button><div class="img"><div class="sp" id="img-spin"></div><img id="pop-img" src="" alt=""></div><div class="info"><div class="nz" id="pop-zh"></div><div class="ne" id="pop-en"></div><div class="desc" id="pop-desc"></div><div class="acts"><button id="pop-play"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> 聆听鸟鸣</button><button id="pop-wiki"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Wiki</button></div><div class="sci" id="pop-sci"></div></div></div>
 <div id="audio-ind"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div><span id="aud-name"></span></div>
+<button id="lang-btn" title="Switch language / 切换语言">EN</button>
 <div id="ctrls"><div id="rgn"></div><div id="fn"><label><input type="checkbox" id="ck-grid" checked> Grid</label><label><input type="checkbox" id="ck-story"> Story</label><label><input type="checkbox" id="ck-routes" checked> Routes</label><button id="b-scatter">Scatter</button><button id="b-migrate">Migrate</button><button id="b-mute">Mute</button><button id="b-rotate" class="on">Rotate</button></div></div>
 <div id="credits">NASA · Xeno-canto · Wikipedia · Three.js</div>
 <script type="importmap">{"imports":{"three":"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js"}}</script>
 <script type="module">
 import*as THREE from'three';
+// ── Language system (defined early so playSound/stopSound can use _TXT) ──────
+let _lang=localStorage.getItem('birdlang')||'zh';
+const _TXT={
+  zh:{title:'万 羽 拾 音',count:n=>`${n} 鸟类`,play:'聆听鸟鸣',playing:'播放中...',noRec:'暂无录音',fail:'播放失败',loadFail:'加载失败',fileWarn:'请用服务器打开',wiki:'Wiki'},
+  en:{title:'Bird Planet',count:n=>`${n} species`,play:'♪ Listen',playing:'♪ Playing...',noRec:'No recording',fail:'Play failed',loadFail:'Load failed',fileWarn:'Use server (http://)',wiki:'Wiki'}
+};
 const R=5,SEG=72,REGIONS={global:{lat:15,lng:20,alt:2.6,label:'Global'},asia:{lat:35,lng:100,alt:1.5,label:'Asia'},europe:{lat:50,lng:12,alt:1.4,label:'Europe'},africa:{lat:2,lng:22,alt:1.6,label:'Africa'},namerica:{lat:38,lng:-100,alt:1.5,label:'N.Am'},samerica:{lat:-15,lng:-58,alt:1.6,label:'S.Am'},arctic:{lat:76,lng:0,alt:1.2,label:'Arctic'},antarctic:{lat:-76,lng:0,alt:1.2,label:'Antarctic'}};
 const RBOUNDS={asia:{la:-15,La:72,lo:40,Lo:180},europe:{la:34,La:72,lo:-25,Lo:50},africa:{la:-36,La:38,lo:-20,Lo:55},namerica:{la:8,La:72,lo:-170,Lo:-50},samerica:{la:-56,La:14,lo:-82,Lo:-34},arctic:{la:60,La:90,lo:-180,Lo:180},antarctic:{la:-90,La:-55,lo:-180,Lo:180}};
 // Textures are fully procedural — zero remote URLs, zero CORS, works from file://
@@ -98,13 +107,22 @@ function ll2v(la,lo,r){const p=(90-la)*Math.PI/180,t=(lo+180)*Math.PI/180;return
 // ── Real photographic Earth textures (NASA / Three.js examples) ─────────────
 function makeEarthTextures(){
   const loader=new THREE.TextureLoader();
+  const maxAniso=renderer.capabilities.getMaxAnisotropy();
+  function hi(tex,srgb){
+    if(srgb)tex.encoding=THREE.sRGBEncoding;
+    tex.anisotropy=maxAniso;
+    // Keep mipmaps for distance quality but use trilinear filtering
+    tex.minFilter=THREE.LinearMipmapLinearFilter;
+    tex.magFilter=THREE.LinearFilter;
+    return tex;
+  }
+  // 3600×1800 Blue Marble from three-globe CDN (much sharper when zooming in)
+  const GLOBE='https://unpkg.com/three-globe@2.31.1/example/img/';
   const BASE='https://threejs.org/examples/textures/planets/';
-  const dayTex=loader.load(BASE+'earth_atmos_2048.jpg');
-  dayTex.encoding=THREE.sRGBEncoding;
-  const nightTex=loader.load(BASE+'earth_lights_2048.png');
-  nightTex.encoding=THREE.sRGBEncoding;
-  const specTex=loader.load(BASE+'earth_specular_2048.jpg');
-  const cloudTex=loader.load(BASE+'earth_clouds_1024.png');
+  const dayTex=hi(loader.load(GLOBE+'earth-blue-marble.jpg'),true);
+  const nightTex=hi(loader.load(GLOBE+'earth-night.jpg'),true);
+  const specTex=hi(loader.load(BASE+'earth_specular_2048.jpg'));
+  const cloudTex=hi(loader.load(BASE+'earth_clouds_1024.png'));
   return {dayTex,nightTex,specTex,cloudTex};
 }
 // ── Procedural fallback (unused — kept as emergency fallback) ─────────────────
@@ -425,7 +443,7 @@ B.forEach((b,i)=>{
 // errors from iNaturalist; throttled responses omit CORS headers, producing a flood of
 // "blocked by CORS policy" errors in the console even though CORS was not the root cause.
 scene.add(mG);
-document.getElementById('cnt').textContent=`${B.length} 鸟类`;
+const cntEl=document.getElementById('cnt');cntEl.textContent=`${B.length} 鸟类`;cntEl.dataset.n=B.length;
 
 // Interaction
 const cv2=renderer.domElement;
@@ -503,9 +521,49 @@ async function fetchBirdImg(sci,en){
 }
 
 // Popup
+const _wikiDescCache={};
+async function _refreshPopupDesc(bird){
+  const t=_TXT[_lang];
+  const descEl=document.getElementById('pop-desc');
+  const zhEl=document.getElementById('pop-zh');
+  const enEl=document.getElementById('pop-en');
+  if(_lang==='en'){
+    zhEl.textContent=bird.e;enEl.textContent=bird.z;
+  }else{
+    zhEl.textContent=bird.z;enEl.textContent=bird.e;
+  }
+  // Show short desc immediately
+  descEl.textContent=bird.d;
+  // Fetch Wikipedia for longer description
+  const key=bird.s;
+  if(_wikiDescCache[key]){
+    descEl.textContent=_lang==='en'?_wikiDescCache[key].en||bird.d:bird.d+(_wikiDescCache[key].en?'\n\n'+_wikiDescCache[key].en:'');
+    return;
+  }
+  try{
+    const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bird.s)}`,{signal:AbortSignal.timeout?AbortSignal.timeout(8000):undefined});
+    if(r.ok){
+      const d=await r.json();
+      const extract=d.extract||'';
+      if(extract&&extract.length>50){
+        if(!_wikiDescCache[key])_wikiDescCache[key]={};
+        _wikiDescCache[key].en=extract;
+        if(S.bird===bird){
+          descEl.textContent=_lang==='en'?extract:bird.d+'\n\n'+extract;
+        }
+      }
+    }
+  }catch{}
+}
 async function showPopup(bird){S.bird=bird;const popup=document.getElementById('popup'),img=document.getElementById('pop-img'),spin=document.getElementById('img-spin');
-// Set text
-document.getElementById('pop-zh').textContent=bird.z;document.getElementById('pop-en').textContent=bird.e;document.getElementById('pop-desc').textContent=bird.d;document.getElementById('pop-sci').textContent=bird.s;
+// Set text immediately
+const zhEl=document.getElementById('pop-zh');
+const enEl=document.getElementById('pop-en');
+if(_lang==='en'){zhEl.textContent=bird.e;enEl.textContent=bird.z;}
+else{zhEl.textContent=bird.z;enEl.textContent=bird.e;}
+document.getElementById('pop-desc').textContent=bird.d;
+document.getElementById('pop-sci').textContent=bird.s;
+_refreshPopupDesc(bird);
 // Show placeholder immediately — no black box
 img.src=makePlaceholder(bird.z,bird.e,bird.c);img.style.display='block';spin.style.display='block';popup.style.display='block';
 // Async load real photo — evict cache on 404 so next click retries
@@ -522,13 +580,13 @@ async function playSound(bird){
   stopSound();
   const btn=document.getElementById('pop-play');
   btn.classList.add('playing');
-  btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 播放中...';
-  const resetBtn=(label='聆听鸟鸣')=>{btn.classList.remove('playing');btn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> ${label}`;};
+  btn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> ${_TXT[_lang]?.playing||'播放中...'}`;
+  const resetBtn=(label)=>{btn.classList.remove('playing');const lbl=label||(_TXT[_lang]?.play||'聆听鸟鸣');btn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> ${lbl}`;};
 
   // From file:// the xeno-canto API fetch is blocked by CORS — show message only, never open new tab
   const isFileOrigin=location.protocol==='file:';
   if(isFileOrigin){
-    resetBtn('请用服务器打开');
+    resetBtn(_TXT[_lang]?.fileWarn||'请用服务器打开');
     btn.title='请通过 http://localhost:8765 访问此文件以启用鸟鸣播放功能';
     return;
   }
@@ -536,31 +594,38 @@ async function playSound(bird){
   // Check audio cache — skip API lookup if already found
   if(_lsAudioCache[bird.s]){
     const a=new Audio();a.volume=.55;a.src=_lsAudioCache[bird.s];S.audio=a;
-    const ind=document.getElementById('audio-ind');document.getElementById('aud-name').textContent=bird.z;ind.style.display='flex';
-    a.play().catch(()=>resetBtn('播放失败'));a.onerror=()=>{resetBtn('暂无录音');ind.style.display='none';};a.onended=()=>{ind.style.display='none';resetBtn();};
+    const ind=document.getElementById('audio-ind');document.getElementById('aud-name').textContent=_lang==='en'?bird.e:bird.z;ind.style.display='flex';
+    a.play().catch(()=>resetBtn(_TXT[_lang]?.fail||'播放失败'));a.onerror=()=>{resetBtn(_TXT[_lang]?.noRec||'暂无录音');ind.style.display='none';};a.onended=()=>{ind.style.display='none';resetBtn()};
     return;
   }
 
   try{
     // All audio sources run in parallel — first winner is used
-    const mkSig2=()=>AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
+    const mkSig2=()=>AbortSignal.timeout?AbortSignal.timeout(10000):undefined;
 
-    // Source 1: xeno-canto (Accept:application/json fixes servers that return HTML 404 without it)
+    // Source 1: xeno-canto — try both API endpoints (api.xeno-canto.org is newer)
     const xcAudio=async()=>{
+      const XCAPI=['https://api.xeno-canto.org/2/recordings?query=','https://xeno-canto.org/api/2/recordings?query='];
       for(const q of [bird.s.replace(/ /g,'+'),bird.e.replace(/ /g,'+')]){
-        try{
-          const r=await fetch(`https://xeno-canto.org/api/2/recordings?query=${q}`,
-            {mode:'cors',credentials:'omit',headers:{'Accept':'application/json'},signal:mkSig2()});
-          if(!r.ok)continue;
-          const d=await r.json();
-          if(d.recordings?.length){
-            let f=d.recordings[0].file||'';
-            if(f.startsWith('//'))f='https:'+f;
-            else if(f.startsWith('/'))f='https://xeno-canto.org'+f;
-            else if(!f.startsWith('http'))f=`https://xeno-canto.org/${d.recordings[0].id}/download`;
-            if(f)return f;
-          }
-        }catch{}
+        for(const base of XCAPI){
+          try{
+            const r=await fetch(`${base}${q}`,
+              {mode:'cors',credentials:'omit',headers:{'Accept':'application/json'},signal:mkSig2()});
+            if(!r.ok)continue;
+            const d=await r.json();
+            if(d.recordings?.length){
+              const rec=d.recordings[0];
+              let f=rec.file||'';
+              if(f.startsWith('//'))f='https:'+f;
+              else if(f.startsWith('/'))f='https://xeno-canto.org'+f;
+              else if(!f.startsWith('http')){
+                // Fallback: construct CDN URL from recording ID
+                f=rec.id?`https://cdn.xeno-canto.org/${rec.id}/serve`:`https://xeno-canto.org/${rec.id||0}/download`;
+              }
+              if(f)return f;
+            }
+          }catch{}
+        }
       }
       throw 0;
     };
@@ -580,7 +645,7 @@ async function playSound(bird){
 
     const audioUrl=await Promise.any([xcAudio(),wikiAudio(bird.s),wikiAudio(bird.e)]).catch(()=>null);
 
-    if(!audioUrl){resetBtn('暂无录音');return;}
+    if(!audioUrl){resetBtn(_TXT[_lang]?.noRec||'暂无录音');return;}
 
     // Save to localStorage so next click plays instantly
     _lsAudioCache[bird.s]=audioUrl;
@@ -592,17 +657,17 @@ async function playSound(bird){
     a.src=audioUrl;
     S.audio=a;
     const ind=document.getElementById('audio-ind');
-    document.getElementById('aud-name').textContent=bird.z;
+    document.getElementById('aud-name').textContent=_lang==='en'?bird.e:bird.z;
     ind.style.display='flex';
-    a.play().catch(err=>{console.warn('Audio play failed:',err.message);resetBtn('播放失败');ind.style.display='none';});
-    a.onerror=()=>{resetBtn('暂无录音');ind.style.display='none';};
+    a.play().catch(err=>{console.warn('Audio play failed:',err.message);resetBtn(_TXT[_lang]?.fail||'播放失败');ind.style.display='none';});
+    a.onerror=()=>{resetBtn(_TXT[_lang]?.noRec||'暂无录音');ind.style.display='none';};
     a.onended=()=>{ind.style.display='none';resetBtn()};
   }catch(err){
     console.log('Audio error:',err);
-    resetBtn('加载失败');
+    resetBtn(_TXT[_lang]?.loadFail||'加载失败');
   }
 }
-function stopSound(){if(S.audio){S.audio.pause();S.audio.currentTime=0;S.audio=null;}document.getElementById('audio-ind').style.display='none';const btn=document.getElementById('pop-play');btn.classList.remove('playing');btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> 聆听鸟鸣';}
+function stopSound(){if(S.audio){S.audio.pause();S.audio.currentTime=0;S.audio=null;}document.getElementById('audio-ind').style.display='none';const btn=document.getElementById('pop-play');btn.classList.remove('playing');btn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> ${(typeof _TXT!=='undefined'&&_TXT[_lang]?.play)||'聆听鸟鸣'}`;}
 
 // Region buttons
 const rgnDiv=document.getElementById('rgn');
@@ -934,6 +999,31 @@ self.onmessage=async e=>{
   },1500);
 })();
 animate();
+
+// ── Bilingual language toggle ──────────────────────────────────────────────
+const _langBtn=document.getElementById('lang-btn');
+function applyLang(){
+  const t=_TXT[_lang];
+  _langBtn.textContent=_lang==='zh'?'EN':'中';
+  // Title
+  const th=document.getElementById('title-h1');if(th)th.textContent=t.title;
+  // Count
+  const ct=document.getElementById('cnt');if(ct&&ct.dataset.n)ct.textContent=t.count(ct.dataset.n);
+  // Popup play button (only if not currently playing)
+  const pb=document.getElementById('pop-play');
+  if(pb&&!pb.classList.contains('playing'))pb.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> ${t.play}`;
+  // Refresh popup desc if open
+  const pop=document.getElementById('popup');
+  if(pop&&pop.style.display!=='none'&&S.bird){
+    _refreshPopupDesc(S.bird);
+  }
+  // File warning language
+  const fwZh=document.getElementById('fw-zh');const fwEn=document.getElementById('fw-en');
+  if(fwZh){fwZh.style.display=_lang==='zh'?'':'none';fwEn.style.display=_lang==='en'?'':'none';}
+  localStorage.setItem('birdlang',_lang);
+}
+_langBtn.onclick=()=>{_lang=_lang==='zh'?'en':'zh';applyLang();};
+applyLang();
 </script>
 </body>
 </html>
