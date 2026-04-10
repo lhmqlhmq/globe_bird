@@ -702,29 +702,39 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     }
     const removedFrac=removed/(W*H);
 
-    // ── Step 3: write back alpha, then crop tightly to the visible bird ──────
+    // ── Step 3: write back; for good removal crop tight, else circular crop ──
     ctx.putImageData(id,0,0);
 
-    // Find tight bounding box of pixels with alpha > 20 (keep bird, cut empty space)
-    const id2=ctx.getImageData(0,0,W,H); const px2=id2.data;
-    let minX=W,maxX=0,minY=H,maxY=0;
-    for(let y=0;y<H;y++){
-      for(let x=0;x<W;x++){
-        if(px2[(y*W+x)*4+3]>20){
-          if(x<minX)minX=x; if(x>maxX)maxX=x;
-          if(y<minY)minY=y; if(y>maxY)maxY=y;
+    if(removedFrac>=0.20){
+      // Background removed well → crop tightly to visible bird region
+      const id2=ctx.getImageData(0,0,W,H); const px2=id2.data;
+      let minX=W,maxX=0,minY=H,maxY=0;
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          if(px2[(y*W+x)*4+3]>20){
+            if(x<minX)minX=x; if(x>maxX)maxX=x;
+            if(y<minY)minY=y; if(y>maxY)maxY=y;
+          }
         }
       }
-    }
-    // If we found a visible region, crop to it with a small padding
-    if(maxX>minX&&maxY>minY){
-      const pad=4;
-      minX=Math.max(0,minX-pad); maxX=Math.min(W-1,maxX+pad);
-      minY=Math.max(0,minY-pad); maxY=Math.min(H-1,maxY+pad);
-      const cW=maxX-minX+1, cH=maxY-minY+1;
-      const cropCv=document.createElement('canvas'); cropCv.width=cW; cropCv.height=cH;
-      cropCv.getContext('2d').drawImage(cv,-minX,-minY);
-      return {canvas:cropCv, aspect:cW/cH, removedFrac};
+      if(maxX>minX&&maxY>minY){
+        const pad=4;
+        minX=Math.max(0,minX-pad); maxX=Math.min(W-1,maxX+pad);
+        minY=Math.max(0,minY-pad); maxY=Math.min(H-1,maxY+pad);
+        const cW=maxX-minX+1, cH=maxY-minY+1;
+        const cropCv=document.createElement('canvas'); cropCv.width=cW; cropCv.height=cH;
+        cropCv.getContext('2d').drawImage(cv,-minX,-minY);
+        return {canvas:cropCv, aspect:cW/cH, removedFrac};
+      }
+    }else{
+      // Background complex or similar to bird → circular crop of original photo
+      // This gives a clean, intentional look instead of messy partial removal
+      ctx.clearRect(0,0,W,H);
+      ctx.drawImage(imgEl,0,0,W,H); // redraw original
+      const r=Math.min(W,H)/2-2;
+      ctx.globalCompositeOperation='destination-in';
+      ctx.beginPath(); ctx.arc(W/2,H/2,r,0,Math.PI*2); ctx.fill();
+      ctx.globalCompositeOperation='source-over';
     }
     return {canvas:cv, aspect:W/H, removedFrac};
   }
