@@ -419,7 +419,6 @@ B.forEach((b,i)=>{
   spr.position.copy(p);spr.scale.set(.22,.22,1);spr.userData={bird:b,idx:i,cell};
   mG.add(spr);markers.push(spr);origP.push(p.clone());
 });
-window._markers=markers; window._mG=mG; window._scene=scene; window._renderer=renderer; window._camera=camera; // DEBUG
 // Sprites display as colored dots on the globe.
 // Photos are loaded only on demand when the popup opens (see fetchBirdImg in showPopup).
 // Background sprite photo loading was removed: 576 parallel API calls caused 429 rate-limit
@@ -755,10 +754,8 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
               depthTest:true,sizeAttenuation:true
             });
             spr.material=mat;
-            const h=goodCutout?0.35:0.22;
+            const h=goodCutout?0.28:0.18;
             spr.scale.set(h*aspect,h,1);
-            if(!window._photoCount)window._photoCount=0;
-            window._photoCount++;
           }catch(e){}
           URL.revokeObjectURL(blobUrl);
         };
