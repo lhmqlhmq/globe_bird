@@ -84,7 +84,7 @@ import*as THREE from'three';
 // ── Language system (defined early so playSound/stopSound can use _TXT) ──────
 let _lang=localStorage.getItem('birdlang')||'zh';
 const _TXT={
-  zh:{title:'万 羽 拾 音',count:n=>`${n} 鸟类`,play:'聆听鸟鸣',playing:'播放中...',noRec:'暂无录音',fail:'播放失败',loadFail:'加载失败',fileWarn:'请用服务器打开',wiki:'Wiki'},
+  zh:{title:'鸟类星球',count:n=>`${n} 鸟类`,play:'聆听鸟鸣',playing:'播放中...',noRec:'暂无录音',fail:'播放失败',loadFail:'加载失败',fileWarn:'请用服务器打开',wiki:'Wiki'},
   en:{title:'Bird Planet',count:n=>`${n} species`,play:'♪ Listen',playing:'♪ Playing...',noRec:'No recording',fail:'Play failed',loadFail:'Load failed',fileWarn:'Use server (http://)',wiki:'Wiki'}
 };
 const R=5,SEG=72,REGIONS={global:{lat:15,lng:20,alt:2.6,label:'Global'},asia:{lat:35,lng:100,alt:1.5,label:'Asia'},europe:{lat:50,lng:12,alt:1.4,label:'Europe'},africa:{lat:2,lng:22,alt:1.6,label:'Africa'},namerica:{lat:38,lng:-100,alt:1.5,label:'N.Am'},samerica:{lat:-15,lng:-58,alt:1.6,label:'S.Am'},arctic:{lat:76,lng:0,alt:1.2,label:'Arctic'},antarctic:{lat:-76,lng:0,alt:1.2,label:'Antarctic'}};
