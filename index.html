@@ -703,24 +703,30 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     }
     const removedFrac=removed/(W*H);
 
-    // ── Step 3: only apply a VERY subtle edge feather (NOT a circular crop) ─
-    // This removes stray 1-px background remnants at the texture edges without
-    // creating the oval / circular-crop look.
+    // ── Step 3: write back alpha, then crop tightly to the visible bird ──────
     ctx.putImageData(id,0,0);
-    ctx.globalCompositeOperation='destination-in';
-    // Tiny 2px margin fade on rectangle edges only
-    const gL=ctx.createLinearGradient(0,0,6,0);gL.addColorStop(0,'transparent');gL.addColorStop(1,'white');
-    const gR=ctx.createLinearGradient(W,0,W-6,0);gR.addColorStop(0,'transparent');gR.addColorStop(1,'white');
-    const gT=ctx.createLinearGradient(0,0,0,6);gT.addColorStop(0,'transparent');gT.addColorStop(1,'white');
-    const gB=ctx.createLinearGradient(0,H,0,H-6);gB.addColorStop(0,'transparent');gB.addColorStop(1,'white');
-    // Fill 95% centre as fully opaque, let edge gradients handle borders
-    ctx.fillStyle='white';ctx.fillRect(6,6,W-12,H-12);
-    ctx.fillStyle=gL;ctx.fillRect(0,0,6,H);
-    ctx.fillStyle=gR;ctx.fillRect(W-6,0,6,H);
-    ctx.fillStyle=gT;ctx.fillRect(0,0,W,6);
-    ctx.fillStyle=gB;ctx.fillRect(0,H-6,W,6);
-    ctx.globalCompositeOperation='source-over';
 
+    // Find tight bounding box of pixels with alpha > 20 (keep bird, cut empty space)
+    const id2=ctx.getImageData(0,0,W,H); const px2=id2.data;
+    let minX=W,maxX=0,minY=H,maxY=0;
+    for(let y=0;y<H;y++){
+      for(let x=0;x<W;x++){
+        if(px2[(y*W+x)*4+3]>20){
+          if(x<minX)minX=x; if(x>maxX)maxX=x;
+          if(y<minY)minY=y; if(y>maxY)maxY=y;
+        }
+      }
+    }
+    // If we found a visible region, crop to it with a small padding
+    if(maxX>minX&&maxY>minY){
+      const pad=4;
+      minX=Math.max(0,minX-pad); maxX=Math.min(W-1,maxX+pad);
+      minY=Math.max(0,minY-pad); maxY=Math.min(H-1,maxY+pad);
+      const cW=maxX-minX+1, cH=maxY-minY+1;
+      const cropCv=document.createElement('canvas'); cropCv.width=cW; cropCv.height=cH;
+      cropCv.getContext('2d').drawImage(cv,-minX,-minY);
+      return {canvas:cropCv, aspect:cW/cH, removedFrac};
+    }
     return {canvas:cv, aspect:W/H, removedFrac};
   }
 
@@ -745,20 +751,15 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
             const tex=new THREE.CanvasTexture(canvas);
             const mat=new THREE.SpriteMaterial({
               map:tex,transparent:true,
-              alphaTest:goodCutout?0.25:0.1,
+              alphaTest:goodCutout?0.15:0.05,
               depthTest:true,sizeAttenuation:true
             });
-            // NO dispose — just replace material directly to rule out dispose side-effects
             spr.material=mat;
-            const h=0.6; // DEBUG: large scale to confirm photos render
+            const h=goodCutout?0.35:0.22;
             spr.scale.set(h*aspect,h,1);
             if(!window._photoCount)window._photoCount=0;
             window._photoCount++;
-            if(window._photoCount<=5){
-              console.log('[applyPhoto] #'+window._photoCount+' frac='+removedFrac.toFixed(3)+' scale='+(h*aspect).toFixed(2)+'x'+h+' matSame='+(spr.material===mat)+' isCanvas='+spr.material.map.isCanvasTexture);
-              window._testSpr=spr; // capture sprite for console inspection
-            }
-          }catch(e){console.error('[applyPhoto]',e);}
+          }catch(e){}
           URL.revokeObjectURL(blobUrl);
         };
         img.onerror=()=>URL.revokeObjectURL(blobUrl);
