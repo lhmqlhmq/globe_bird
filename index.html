@@ -703,38 +703,55 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     }).catch(()=>{});
   }
 
-  // ── Lazy-load AI module via esm.sh (resolves bare specifiers like onnxruntime-web) ──
-  // jsDelivr fails because index.mjs has bare import 'onnxruntime-web' — no bundler to resolve it.
-  // esm.sh rewrites all imports to absolute CDN URLs, so it works directly in browsers.
-  const AI_URL='https://esm.sh/@imgly/background-removal@1.7.0';
-  // Model files (ONNX + WASM) are served from staticimgly.com by default
+  // ── AI background removal via Web Worker (keeps main thread responsive) ────
+  // Worker runs @imgly/background-removal in a separate thread via esm.sh.
+  // esm.sh resolves bare 'onnxruntime-web' import that jsDelivr can't handle.
   const AI_PUBLIC='https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/';
-  let _aiMod=null, _aiProm=null;
-  function loadAI(){
-    if(_aiMod)return Promise.resolve(_aiMod);
-    if(_aiProm)return _aiProm;
-    _aiProm=import(AI_URL).then(async m=>{
-      _aiMod=m;
-      // Pre-warm: start downloading ONNX model files in background
-      if(typeof m.preload==='function'){
-        m.preload({model:'isnet_quint8',publicPath:AI_PUBLIC}).catch(()=>{});
-      }
-      return m;
-    }).catch(()=>null);
-    return _aiProm;
+  const _workerSrc=`
+import{removeBackground}from'https://esm.sh/@imgly/background-removal@1.7.0';
+const PUB='${AI_PUBLIC}';
+self.onmessage=async e=>{
+  const{id,ab,mime}=e.data;
+  try{
+    const blob=new Blob([ab],{type:mime});
+    const r=await removeBackground(blob,{model:'isnet_quint8',publicPath:PUB,output:{format:'image/png',quality:0.92}});
+    const out=await r.arrayBuffer();
+    self.postMessage({id,ab:out},[out]);
+  }catch(err){self.postMessage({id,error:String(err)});}
+};
+`;
+  let _aiWorker=null,_aiJobs=new Map(),_aiJobId=0;
+  function getAIWorker(){
+    if(_aiWorker)return _aiWorker;
+    try{
+      const url=URL.createObjectURL(new Blob([_workerSrc],{type:'application/javascript'}));
+      _aiWorker=new Worker(url,{type:'module'});
+      _aiWorker.onmessage=e=>{
+        const{id,ab,error}=e.data;
+        const cb=_aiJobs.get(id); _aiJobs.delete(id);
+        if(cb)cb(ab,error);
+      };
+      _aiWorker.onerror=()=>{_aiWorker=null;}; // reset on crash
+    }catch{}
+    return _aiWorker;
   }
 
-  // ── Run AI background removal on a Blob ───────────────────────────────────
+  // Send blob to worker, get back processed PNG ArrayBuffer
   async function aiRemoveBg(srcBlob){
-    const mod=await loadAI(); if(!mod)throw new Error('no AI');
-    const fn=mod.removeBackground; // Named export — NOT mod.default
-    if(typeof fn!=='function')throw new Error('no removeBackground fn');
-    return fn(srcBlob,{
-      model:'isnet_quint8',
-      publicPath:AI_PUBLIC,
-      output:{format:'image/png',quality:0.92}
+    const w=getAIWorker(); if(!w)throw new Error('no worker');
+    const ab=await srcBlob.arrayBuffer();
+    return new Promise((res,rej)=>{
+      const id=_aiJobId++;
+      _aiJobs.set(id,(outAb,err)=>{
+        if(err)rej(new Error(err));
+        else res(new Blob([outAb],{type:'image/png'}));
+      });
+      w.postMessage({id,ab,mime:srcBlob.type},[ab]); // transfer ownership — zero-copy
     });
   }
+
+  // Warm up worker immediately (downloads model in background thread)
+  getAIWorker();
 
   // ── Color-distance fallback (edge-sample + threshold) ────────────────────
   function colorDistanceCutout(imgEl){
@@ -807,78 +824,80 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     spr.scale.set(0.28*aspect,0.28,1);
   }
 
-  // ── Main: fetch → AI remove bg → cache → apply ───────────────────────────
-  async function applyPhoto(spr,b,url){
+  // ── Main: fetch → AI or color-distance → cache → apply ──────────────────
+  // useAI=true  → Worker removes background (clean, ~1-3s, non-blocking)
+  // useAI=false → color-distance fallback (instant, imperfect for complex bg)
+  async function applyPhoto(spr,b,url,useAI){
     if(!url)return;
     const cacheKey='v1:'+url;
 
-    // Fast path: processed PNG in IndexedDB
+    // Fast path: processed PNG already in IndexedDB
     const cached=await idbGet(cacheKey);
     if(cached){
-      const img=new Image();
       const bu=URL.createObjectURL(new Blob([cached],{type:'image/png'}));
-      img.onload=()=>{
-        try{const{canvas,aspect}=cropToContent(img);applyCanvas(spr,canvas,aspect);}catch{}
-        URL.revokeObjectURL(bu);
-      };
-      img.src=bu;
+      const img=new Image();
+      await new Promise(res=>{img.onload=res;img.onerror=res;img.src=bu;});
+      try{const{canvas,aspect}=cropToContent(img);applyCanvas(spr,canvas,aspect);}catch{}
+      URL.revokeObjectURL(bu);
       return;
     }
 
-    // Fetch source image — static.inaturalist.org has no CORS, convert to S3 URL
+    // Fetch source — fix static.inaturalist.org (no CORS) → S3 (CORS ok)
     const fetchUrl=url.replace('https://static.inaturalist.org/','https://inaturalist-open-data.s3.amazonaws.com/');
     let srcBlob;
     try{
       const r=await fetch(fetchUrl,{mode:'cors',credentials:'omit'});
       if(!r.ok)return;
       srcBlob=await r.blob();
-      if(!srcBlob.type.startsWith('image/'))return; // guard: reject HTML/text responses
+      if(!srcBlob.type.startsWith('image/'))return;
     }catch{return;}
 
-    // Try AI removal; fall back to color-distance
+    // AI removal (worker) or color-distance fallback
     let cleanBlob=null,usedAI=false;
-    try{cleanBlob=await aiRemoveBg(srcBlob);usedAI=true;}catch{}
+    if(useAI){
+      try{cleanBlob=await aiRemoveBg(srcBlob);usedAI=true;}catch{}
+    }
 
     const blobUrl=URL.createObjectURL(cleanBlob||srcBlob);
     const img=new Image();
-    img.onload=()=>{
-      try{
-        const{canvas,aspect}=usedAI?cropToContent(img):colorDistanceCutout(img);
-        applyCanvas(spr,canvas,aspect);
-        // Persist processed PNG to IndexedDB
-        if(usedAI){
-          canvas.toBlob(b2=>{
-            if(b2)b2.arrayBuffer().then(ab=>idbSet(cacheKey,ab)).catch(()=>{});
-          },'image/png',0.92);
-        }
-      }catch{}
-      URL.revokeObjectURL(blobUrl);
-    };
-    img.onerror=()=>URL.revokeObjectURL(blobUrl);
-    img.src=blobUrl;
+    await new Promise(res=>{img.onload=res;img.onerror=res;img.src=blobUrl;});
+    try{
+      const{canvas,aspect}=usedAI?cropToContent(img):colorDistanceCutout(img);
+      applyCanvas(spr,canvas,aspect);
+      // Save AI result to IndexedDB for instant load on next visit
+      if(usedAI){
+        canvas.toBlob(b2=>{
+          if(b2)b2.arrayBuffer().then(ab=>idbSet(cacheKey,ab)).catch(()=>{});
+        },'image/png',0.92);
+      }
+    }catch{}
+    URL.revokeObjectURL(blobUrl);
   }
 
-  // Start warming up the AI model immediately in the background
-  loadAI();
-
-  // Queue: cached-URL birds first; among uncached prefer camera-facing birds
+  // ── Sequential queue with AI cap ────────────────────────────────────────
+  // AI processes one bird at a time in the worker (non-blocking for UI).
+  // Only the top MAX_AI camera-facing birds get AI; the rest use color-distance.
+  // IndexedDB cache means repeat visits are instant (<10ms per bird).
+  const MAX_AI=60; // top N most visible birds get AI treatment
   const q=markers.map((spr,i)=>({spr,b:B[i],url:_lsCache[B[i].s]||null}));
   q.sort((a,b)=>{
     if(!!a.url!==!!b.url)return a.url?-1:1;
     return b.spr.position.dot(camera.position)-a.spr.position.dot(camera.position);
   });
 
-  let qi=0;
-  function run(){
+  let qi=0,aiUsed=0;
+  async function run(){
     if(qi>=q.length)return;
     const item=q[qi++];
-    if(item.url){
-      applyPhoto(item.spr,item.b,item.url);
-      setTimeout(run,20);
-    }else{
-      fetchBirdImg(item.b.s,item.b.e).then(url=>applyPhoto(item.spr,item.b,url)).catch(()=>{});
-      setTimeout(run,150);
-    }
+    const useAI=aiUsed<MAX_AI; if(useAI)aiUsed++;
+
+    try{
+      const url=item.url||(await fetchBirdImg(item.b.s,item.b.e));
+      if(url)await applyPhoto(item.spr,item.b,url,useAI);
+    }catch{}
+
+    // Yield to UI thread, then process next bird
+    setTimeout(run, item.url?0:150);
   }
   setTimeout(run,1500); // start after globe renders
 })();
