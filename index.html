@@ -422,29 +422,23 @@ B.forEach((b,i)=>{
   loadQueue.push({spr,b});
 });
 // Load real bird photos with staggered delay
-// Uses fetch→blob→ObjectURL so the image is never "tainted" for WebGL texImage2D
-async function applyBirdPhoto(spr,url){
-  try{
-    const resp=await fetch(url);
-    if(!resp.ok)return;
-    const blob=await resp.blob();
-    const objUrl=URL.createObjectURL(blob);
-    const img=new Image();
-    img.onload=()=>{
-      spr.material.map=makeBirdTex(img);
-      spr.material.needsUpdate=true;
-      spr.scale.set(.22,.22,1);
-      URL.revokeObjectURL(objUrl); // free memory
-    };
-    img.onerror=()=>URL.revokeObjectURL(objUrl);
-    img.src=objUrl;
-  }catch{}
+// THREE.TextureLoader uses crossOrigin='anonymous' internally.
+// If the CDN has CORS headers → texture loads fine into WebGL.
+// If CORS headers are missing → onError fires, we do nothing, sprite stays as placeholder dot.
+// No SecurityError, no tainted canvas, no fetch CORS block.
+function applyBirdPhoto(spr,url){
+  new THREE.TextureLoader().load(
+    url,
+    (tex)=>{spr.material.map=tex;spr.material.needsUpdate=true;spr.scale.set(.22,.22,1);},
+    undefined,
+    ()=>{}  // silently ignore load / CORS errors
+  );
 }
 loadQueue.forEach(({spr,b},i)=>{
-  // 3 birds per batch, 700ms between batches — respects iNaturalist rate limits (~250 req/min)
+  // 1 bird per 750ms = ~80 req/min — safely under iNaturalist's 100/min rate limit
   setTimeout(()=>{
     fetchBirdImgFast(b.s).then(url=>{if(url)applyBirdPhoto(spr,url);});
-  },Math.floor(i/3)*700);
+  }, i*750);
 });
 scene.add(mG);
 document.getElementById('cnt').textContent=`${B.length} 鸟类`;
