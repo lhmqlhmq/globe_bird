@@ -521,9 +521,8 @@ async function fetchBirdImg(sci,en){
 }
 
 // Popup
-const _wikiDescCache={};
+const _wikiDescCache={};// {sciName: {en:'...', zh:'...'}}
 async function _refreshPopupDesc(bird){
-  const t=_TXT[_lang];
   const descEl=document.getElementById('pop-desc');
   const zhEl=document.getElementById('pop-zh');
   const enEl=document.getElementById('pop-en');
@@ -532,28 +531,44 @@ async function _refreshPopupDesc(bird){
   }else{
     zhEl.textContent=bird.z;enEl.textContent=bird.e;
   }
-  // Show short desc immediately
-  descEl.textContent=bird.d;
-  // Fetch Wikipedia for longer description
   const key=bird.s;
+  const sig=AbortSignal.timeout?AbortSignal.timeout(8000):undefined;
+  // Use cache if available
   if(_wikiDescCache[key]){
-    descEl.textContent=_lang==='en'?_wikiDescCache[key].en||bird.d:bird.d+(_wikiDescCache[key].en?'\n\n'+_wikiDescCache[key].en:'');
+    descEl.textContent=_lang==='en'
+      ?(_wikiDescCache[key].en||bird.d)
+      :(_wikiDescCache[key].zh||bird.d);
     return;
   }
-  try{
-    const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bird.s)}`,{signal:AbortSignal.timeout?AbortSignal.timeout(8000):undefined});
-    if(r.ok){
-      const d=await r.json();
-      const extract=d.extract||'';
-      if(extract&&extract.length>50){
-        if(!_wikiDescCache[key])_wikiDescCache[key]={};
-        _wikiDescCache[key].en=extract;
-        if(S.bird===bird){
-          descEl.textContent=_lang==='en'?extract:bird.d+'\n\n'+extract;
-        }
-      }
+  // Show short desc while fetching
+  descEl.textContent=bird.d;
+  if(!_wikiDescCache[key])_wikiDescCache[key]={};
+  // Fetch English Wikipedia (by scientific name) and Chinese Wikipedia (by Chinese name) in parallel
+  const fetchEn=async()=>{
+    const r=await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(bird.s)}`,{signal:sig});
+    if(!r.ok)return;
+    const d=await r.json();
+    const txt=d.extract||'';
+    if(txt.length>50)_wikiDescCache[key].en=txt;
+  };
+  const fetchZh=async()=>{
+    // Try Chinese Wikipedia by Chinese name, fallback to scientific name
+    for(const q of [bird.z,bird.s]){
+      try{
+        const r=await fetch(`https://zh.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(q)}`,{signal:sig});
+        if(!r.ok)continue;
+        const d=await r.json();
+        const txt=d.extract||'';
+        if(txt.length>30){_wikiDescCache[key].zh=txt;return;}
+      }catch{}
     }
-  }catch{}
+  };
+  await Promise.allSettled([fetchEn(),fetchZh()]);
+  if(S.bird===bird){
+    descEl.textContent=_lang==='en'
+      ?(_wikiDescCache[key].en||bird.d)
+      :(_wikiDescCache[key].zh||bird.d);
+  }
 }
 async function showPopup(bird){S.bird=bird;const popup=document.getElementById('popup'),img=document.getElementById('pop-img'),spin=document.getElementById('img-spin');
 // Set text immediately
