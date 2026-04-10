@@ -411,7 +411,6 @@ function makeBirdTex(img){
   return tex;
 }
 // Stagger image loads to avoid hammering the API (20 at a time, 400ms apart)
-let loadQueue=[];
 B.forEach((b,i)=>{
   // Snap bird to nearest free 10° grid cell so each sits in its own box
   const cell=assignCell(b.la,b.lo);
@@ -419,28 +418,12 @@ B.forEach((b,i)=>{
   const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:makeDotTex(b.c),transparent:true,depthTest:true,sizeAttenuation:true}));
   spr.position.copy(p);spr.scale.set(.15,.15,1);spr.userData={bird:b,idx:i,cell};
   mG.add(spr);markers.push(spr);origP.push(p.clone());
-  loadQueue.push({spr,b});
 });
-// Load real bird photos with staggered delay
-// THREE.TextureLoader uses crossOrigin='anonymous' internally.
-// If the CDN has CORS headers → texture loads fine into WebGL.
-// If CORS headers are missing → onError fires, we do nothing, sprite stays as placeholder dot.
-// No SecurityError, no tainted canvas, no fetch CORS block.
-function applyBirdPhoto(spr,url){
-  // Use S3 CDN URL (has CORS headers) for WebGL textures; fall back silently if S3 404s
-  new THREE.TextureLoader().load(
-    toS3Url(url),
-    (tex)=>{spr.material.map=tex;spr.material.needsUpdate=true;spr.scale.set(.22,.22,1);},
-    undefined,
-    ()=>{}  // silently ignore load / CORS / 404 errors
-  );
-}
-loadQueue.forEach(({spr,b},i)=>{
-  // 1 bird per 750ms = ~80 req/min — safely under iNaturalist's 100/min rate limit
-  setTimeout(()=>{
-    fetchBirdImgFast(b.s).then(url=>{if(url)applyBirdPhoto(spr,url);});
-  }, i*750);
-});
+// Sprites display as colored dots on the globe.
+// Photos are loaded only on demand when the popup opens (see fetchBirdImg in showPopup).
+// Background sprite photo loading was removed: 576 parallel API calls caused 429 rate-limit
+// errors from iNaturalist; throttled responses omit CORS headers, producing a flood of
+// "blocked by CORS policy" errors in the console even though CORS was not the root cause.
 scene.add(mG);
 document.getElementById('cnt').textContent=`${B.length} 鸟类`;
 
