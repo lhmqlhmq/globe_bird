@@ -84,8 +84,8 @@ const RBOUNDS={asia:{la:-15,La:72,lo:40,Lo:180},europe:{la:34,La:72,lo:-25,Lo:50
 const S={autoRotate:true,muted:false,scattered:false,migrating:false,gridOn:true,routesOn:true,mouseDown:false,dragging:false,mx:0,my:0,pmx:0,pmy:0,rY:0,rX:.35,tRY:0,tRX:.35,dist:R*2.6,tDist:R*2.6,bird:null,audio:null,hovered:null,region:'global'};
 
 const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
-renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5)); // cap at 1.5 — pixel ratio 2 renders 4× pixels and kills frame rate
 renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x050508);
 const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,500);
@@ -477,12 +477,17 @@ async function fetchBirdImgFast(sci){
     const d=await r.json();
     const photo=d.results?.[0]?.default_photo;
     if(photo){
-      const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);
+      const url=toS3Url(photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null));
       if(url){_imgCache.set(sci,url);return url;}
     }
   }catch{}
   _imgCache.set(sci,null);
   return null;
+}
+// Rewrite static.inaturalist.org URLs to the S3 CDN which has proper CORS headers
+function toS3Url(url){
+  if(!url)return url;
+  return url.replace('https://static.inaturalist.org/photos/','https://inaturalist-open-data.s3.amazonaws.com/photos/');
 }
 
 // FULL fetch: Wikipedia first, iNaturalist fallback — used only in popup (one request at a time)
@@ -490,7 +495,7 @@ async function fetchBirdImg(sci,en){
   if(_imgCache.has(sci))return _imgCache.get(sci);
   const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
   // 1. iNaturalist (fast, reliable, no rate-limit issues)
-  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);if(url){_imgCache.set(sci,url);return url;}}}}catch{}
+  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=toS3Url(photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null));if(url){_imgCache.set(sci,url);return url;}}}}catch{}
   // 2. Wikipedia by scientific name (fallback — can hit 429 under heavy load)
   try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(sci)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_imgCache.set(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
   // 3. Wikipedia by English name
