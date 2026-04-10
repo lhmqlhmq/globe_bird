@@ -521,7 +521,7 @@ img.src=makePlaceholder(bird.z,bird.e,bird.c);img.style.display='block';spin.sty
 // Async load real photo — evict cache on 404 so next click retries
 fetchBirdImg(bird.s,bird.e).then(url=>{
   if(!url||S.bird!==bird){spin.style.display='none';return;}
-  img.onerror=()=>{img.onerror=null;_imgCache.delete(bird.s);spin.style.display='none';};
+  img.onerror=()=>{img.onerror=null;img.src=makePlaceholder(bird.z,bird.e,bird.c);_imgCache.delete(bird.s);delete _lsCache[bird.s];try{localStorage.setItem(_LS_KEY,JSON.stringify(_lsCache));}catch{}spin.style.display='none';};
   img.src=url;img.style.display='block';spin.style.display='none';
 }).catch(()=>{spin.style.display='none';});
 if(!S.muted)playSound(bird);}
@@ -552,46 +552,43 @@ async function playSound(bird){
   }
 
   try{
-    // --- Source 1: xeno-canto API (non-www — www. redirect strips CORS headers) ---
-    let audioUrl=null;
-    const xcQueries=[
-      `https://xeno-canto.org/api/2/recordings?query=${bird.s.replace(/ /g,'+')}`,
-      `https://xeno-canto.org/api/2/recordings?query=${bird.e.replace(/ /g,'+')}`,
-    ];
-    for(const url of xcQueries){
-      try{
-        const r=await fetch(url,{mode:'cors',credentials:'omit'});
-        if(!r.ok)continue;
-        const d=await r.json();
-        if(d.recordings?.length){
-          let f=d.recordings[0].file||'';
-          if(f.startsWith('//'))f='https:'+f;
-          else if(f.startsWith('/'))f='https://xeno-canto.org'+f;
-          else if(!f.startsWith('http'))f=`https://xeno-canto.org/${d.recordings[0].id}/download`;
-          if(f)audioUrl=f;
-          break;
-        }
-      }catch{}
-    }
+    // All audio sources run in parallel — first winner is used
+    const mkSig2=()=>AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
 
-    // --- Source 2: Wikimedia Commons (fallback — strong CORS, free .ogg files) ---
-    if(!audioUrl){
-      const sig2=AbortSignal.timeout?AbortSignal.timeout(5000):undefined;
-      for(const q of [bird.s,bird.e]){
-        if(audioUrl)break;
+    // Source 1: xeno-canto (Accept:application/json fixes servers that return HTML 404 without it)
+    const xcAudio=async()=>{
+      for(const q of [bird.s.replace(/ /g,'+'),bird.e.replace(/ /g,'+')]){
         try{
-          const r=await fetch(`https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srnamespace=6&srlimit=10&format=json&origin=*`,{signal:sig2});
+          const r=await fetch(`https://xeno-canto.org/api/2/recordings?query=${q}`,
+            {mode:'cors',credentials:'omit',headers:{'Accept':'application/json'},signal:mkSig2()});
           if(!r.ok)continue;
           const d=await r.json();
-          const af=(d.query?.search||[]).filter(f=>/\.(ogg|mp3|flac)$/i.test(f.title));
-          if(!af.length)continue;
-          const r2=await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(af[0].title)}&prop=imageinfo&iiprop=url&format=json&origin=*`,{signal:sig2});
-          if(!r2.ok)continue;
-          const d2=await r2.json();
-          audioUrl=Object.values(d2.query.pages)[0]?.imageinfo?.[0]?.url||null;
+          if(d.recordings?.length){
+            let f=d.recordings[0].file||'';
+            if(f.startsWith('//'))f='https:'+f;
+            else if(f.startsWith('/'))f='https://xeno-canto.org'+f;
+            else if(!f.startsWith('http'))f=`https://xeno-canto.org/${d.recordings[0].id}/download`;
+            if(f)return f;
+          }
         }catch{}
       }
-    }
+      throw 0;
+    };
+
+    // Source 2 & 3: Wikimedia Commons by sci name and English name (run in parallel)
+    const wikiAudio=async(q)=>{
+      const r=await fetch(`https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srnamespace=6&srlimit=5&format=json&origin=*`,{signal:mkSig2()});
+      if(!r.ok)throw 0;
+      const af=((await r.json()).query?.search||[]).filter(f=>/\.(ogg|mp3|flac)$/i.test(f.title));
+      if(!af.length)throw 0;
+      const r2=await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(af[0].title)}&prop=imageinfo&iiprop=url&format=json&origin=*`,{signal:mkSig2()});
+      if(!r2.ok)throw 0;
+      const url=Object.values((await r2.json()).query.pages)[0]?.imageinfo?.[0]?.url;
+      if(!url)throw 0;
+      return url;
+    };
+
+    const audioUrl=await Promise.any([xcAudio(),wikiAudio(bird.s),wikiAudio(bird.e)]).catch(()=>null);
 
     if(!audioUrl){resetBtn('暂无录音');return;}
 
