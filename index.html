@@ -419,6 +419,7 @@ B.forEach((b,i)=>{
   spr.position.copy(p);spr.scale.set(.22,.22,1);spr.userData={bird:b,idx:i,cell};
   mG.add(spr);markers.push(spr);origP.push(p.clone());
 });
+window._markers=markers; window._mG=mG; window._scene=scene; window._renderer=renderer; window._camera=camera; // DEBUG
 // Sprites display as colored dots on the globe.
 // Photos are loaded only on demand when the popup opens (see fetchBirdImg in showPopup).
 // Background sprite photo loading was removed: 576 parallel API calls caused 429 rate-limit
