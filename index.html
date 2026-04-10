@@ -494,11 +494,21 @@ async function showPopup(bird){S.bird=bird;const popup=document.getElementById('
 document.getElementById('pop-zh').textContent=bird.z;document.getElementById('pop-en').textContent=bird.e;document.getElementById('pop-desc').textContent=bird.d;document.getElementById('pop-sci').textContent=bird.s;
 // Show placeholder immediately — no black box
 img.src=makePlaceholder(bird.z,bird.e,bird.c);img.style.display='block';spin.style.display='block';popup.style.display='block';
-// Async load real photo
+// Async load real photo — with Wikipedia fallback if primary URL 404s
 fetchBirdImg(bird.s,bird.e).then(url=>{
   if(!url){spin.style.display='none';return;}
-  // Popup <img> never goes into WebGL — no crossOrigin needed, just set src directly
-  if(S.bird===bird){img.src=url;img.style.display='block';}
+  if(S.bird!==bird)return;
+  // If the iNaturalist photo URL 404s, fall back to Wikipedia
+  img.onerror=()=>{
+    img.onerror=null;
+    _imgCache.delete(bird.s); // evict bad URL so next click re-fetches
+    const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
+    const tryWiki=(title)=>fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig})
+      .then(r=>r.json()).then(d=>{const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source&&S.bird===bird){_imgCache.set(bird.s,pg.thumbnail.source);img.src=pg.thumbnail.source;}})
+      .catch(()=>{});
+    tryWiki(bird.s).catch(()=>{}).then(()=>{if(!img.src||img.naturalWidth===0)tryWiki(bird.e);});
+  };
+  img.src=url;img.style.display='block';
   spin.style.display='none';
 }).catch(()=>{spin.style.display='none';});
 if(!S.muted)playSound(bird);}
