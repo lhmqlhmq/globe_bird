@@ -653,6 +653,59 @@ document.getElementById('lbar').style.width='100%';
 // Show file:// warning banner if not served over http
 if(location.protocol==='file:')document.getElementById('file-warn').style.display='block';
 setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('done');setTimeout(()=>{ld.style.display='none';},1100);},600);
+
+// ── Progressive sprite photo loader ──────────────────────────────────────────
+// Replaces colored dots with real bird photo thumbnails as they load.
+// Strategy: cached-URL birds fire image-loads immediately (parallel, no API call);
+// uncached birds throttle API calls to ≤1 per 150ms to avoid iNaturalist 429s.
+(function bgPhotoLoad(){
+  if(location.protocol==='file:')return; // CORS blocks canvas drawImage from file://
+  function makePhotoTex(imgEl,color){
+    const sz=128,cv=document.createElement('canvas');cv.width=cv.height=sz;
+    const ctx=cv.getContext('2d');
+    // Circular crop
+    ctx.beginPath();ctx.arc(sz/2,sz/2,sz/2-2,0,Math.PI*2);ctx.clip();
+    // Cover-fit image
+    const sc=Math.max(sz/imgEl.naturalWidth,sz/imgEl.naturalHeight);
+    const w=imgEl.naturalWidth*sc,h=imgEl.naturalHeight*sc;
+    ctx.drawImage(imgEl,(sz-w)/2,(sz-h)/2,w,h);
+    // Colored ring border
+    ctx.beginPath();ctx.arc(sz/2,sz/2,sz/2-4,0,Math.PI*2);
+    ctx.strokeStyle=color||'#c8b88a';ctx.lineWidth=7;ctx.stroke();
+    // Dark shadow edge
+    ctx.beginPath();ctx.arc(sz/2,sz/2,sz/2-1,0,Math.PI*2);
+    ctx.strokeStyle='rgba(0,0,0,0.55)';ctx.lineWidth=4;ctx.stroke();
+    return new THREE.CanvasTexture(cv);
+  }
+  // Build queue: cached-URL birds first; among uncached prefer camera-facing
+  const q=markers.map((spr,i)=>({spr,b:B[i],url:_lsCache[B[i].s]||null}));
+  q.sort((a,b)=>{
+    if(!!a.url!==!!b.url)return a.url?-1:1;
+    return b.spr.position.dot(camera.position)-a.spr.position.dot(camera.position);
+  });
+  let qi=0;
+  function applyPhoto(spr,b,url){
+    if(!url)return;
+    const img=new Image();img.crossOrigin='anonymous';
+    img.onload=()=>{
+      try{const t=makePhotoTex(img,b.c);spr.material.map=t;spr.material.needsUpdate=true;}catch(e){}
+    };
+    img.onerror=()=>{}; // keep colored dot on CORS/load error
+    img.src=url;
+  }
+  function run(){
+    if(qi>=q.length)return;
+    const item=q[qi++];
+    if(item.url){
+      applyPhoto(item.spr,item.b,item.url); // fire image load immediately
+      setTimeout(run,8);                    // fast dispatch for cached batch
+    }else{
+      fetchBirdImg(item.b.s,item.b.e).then(url=>applyPhoto(item.spr,item.b,url)).catch(()=>{});
+      setTimeout(run,150);                  // throttle API calls ≤1/150ms
+    }
+  }
+  setTimeout(run,1500); // wait for globe to finish rendering before starting
+})();
 animate();
 </script>
 </body>
