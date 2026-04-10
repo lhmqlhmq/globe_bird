@@ -603,29 +603,18 @@ async function playSound(bird){
     // All audio sources run in parallel — first winner is used
     const mkSig2=()=>AbortSignal.timeout?AbortSignal.timeout(10000):undefined;
 
-    // Source 1: xeno-canto — try both API endpoints (api.xeno-canto.org is newer)
-    const xcAudio=async()=>{
-      const XCAPI=['https://api.xeno-canto.org/2/recordings?query=','https://xeno-canto.org/api/2/recordings?query='];
-      for(const q of [bird.s.replace(/ /g,'+'),bird.e.replace(/ /g,'+')]){
-        for(const base of XCAPI){
-          try{
-            const r=await fetch(`${base}${q}`,
-              {mode:'cors',credentials:'omit',headers:{'Accept':'application/json'},signal:mkSig2()});
-            if(!r.ok)continue;
-            const d=await r.json();
-            if(d.recordings?.length){
-              const rec=d.recordings[0];
-              let f=rec.file||'';
-              if(f.startsWith('//'))f='https:'+f;
-              else if(f.startsWith('/'))f='https://xeno-canto.org'+f;
-              else if(!f.startsWith('http')){
-                // Fallback: construct CDN URL from recording ID
-                f=rec.id?`https://cdn.xeno-canto.org/${rec.id}/serve`:`https://xeno-canto.org/${rec.id||0}/download`;
-              }
-              if(f)return f;
-            }
-          }catch{}
-        }
+    // Source 1: iNaturalist sounds (XenoCanto v2 was shut down; v3 requires API key)
+    const inatAudio=async()=>{
+      for(const q of [bird.s,bird.e]){
+        try{
+          const r=await fetch(`https://api.inaturalist.org/v1/observations?taxon_name=${encodeURIComponent(q)}&sounds=true&quality_grade=research&per_page=5&order_by=votes`,
+            {signal:mkSig2()});
+          if(!r.ok)continue;
+          const d=await r.json();
+          const sounds=(d.results||[]).flatMap(o=>o.sounds||[]);
+          const f=sounds.find(s=>s.file_url)?.file_url;
+          if(f)return f;
+        }catch{}
       }
       throw 0;
     };
@@ -643,7 +632,7 @@ async function playSound(bird){
       return url;
     };
 
-    const audioUrl=await Promise.any([xcAudio(),wikiAudio(bird.s),wikiAudio(bird.e)]).catch(()=>null);
+    const audioUrl=await Promise.any([inatAudio(),wikiAudio(bird.s),wikiAudio(bird.e)]).catch(()=>null);
 
     if(!audioUrl){resetBtn(_TXT[_lang]?.noRec||'暂无录音');return;}
 
@@ -652,7 +641,7 @@ async function playSound(bird){
     try{localStorage.setItem(_LS_AUDIO_KEY,JSON.stringify(_lsAudioCache));}catch{}
 
     const a=new Audio();
-    // Do NOT set crossOrigin — Xeno-canto CDN audio files don't send CORS headers
+    // Do NOT set crossOrigin — iNaturalist/Wikimedia audio files may lack CORS headers
     a.volume=.55;
     a.src=audioUrl;
     S.audio=a;
