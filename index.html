@@ -764,10 +764,17 @@ self.onmessage=async e=>{
     for(let x=0;x<W;x+=2){a(x,0);a(x,H-1);}
     for(let y=0;y<H;y+=2){a(0,y);a(W-1,y);}
     const med=(c)=>s.map(v=>v[c]).sort((a,b)=>a-b)[s.length>>1];
+    // Two background samples: overall median + a secondary "opposite brightness" median
+    // helps with two-tone backgrounds (sky + foliage, snow + tree, etc.)
     const bg=[med(0),med(1),med(2)];
-    const T=68,F=20;let rm=0;
+    const lum=s.map(([r,g,b])=>r*.299+g*.587+b*.114);const medLum=lum.slice().sort((a,b)=>a-b)[lum.length>>1];
+    const opp=s.filter((_,i)=>lum[i]<medLum-30||lum[i]>medLum+30);
+    const bg2=opp.length>4?[opp.map(v=>v[0]).sort((a,b)=>a-b)[opp.length>>1],opp.map(v=>v[1]).sort((a,b)=>a-b)[opp.length>>1],opp.map(v=>v[2]).sort((a,b)=>a-b)[opp.length>>1]]:null;
+    const T=78,F=22;let rm=0;
     for(let i=0,j=0;i<W*H;i++,j+=4){
-      const d=Math.sqrt((px[j]-bg[0])**2+(px[j+1]-bg[1])**2+(px[j+2]-bg[2])**2);
+      const r=px[j],g=px[j+1],b=px[j+2];
+      let d=Math.sqrt((r-bg[0])**2+(g-bg[1])**2+(b-bg[2])**2);
+      if(bg2){const d2=Math.sqrt((r-bg2[0])**2+(g-bg2[1])**2+(b-bg2[2])**2);if(d2<d)d=d2;}
       if(d<T-F){px[j+3]=0;rm++;}
       else if(d<T){px[j+3]=Math.round(((d-(T-F))/F)**2*255);rm+=px[j+3]<128?1:0;}
     }
