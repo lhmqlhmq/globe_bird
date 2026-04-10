@@ -455,61 +455,35 @@ x.fillStyle='rgba(140,120,90,0.65)';x.font='italic 12px "Noto Sans SC",sans-seri
 x.strokeStyle='rgba(200,184,138,0.07)';x.lineWidth=1;x.strokeRect(12,12,476,276);return c.toDataURL();}
 
 // In-session cache + persistent localStorage cache for photo and audio URLs
+// v3: bumped key to clear any stale/corrupted entries from earlier deploys
 const _imgCache=new Map();
-const _LS_KEY='birdphotos_v2';
+const _LS_KEY='birdphotos_v3';
 const _LS_AUDIO_KEY='birdaudio_v1';
 const _lsAudioCache=(()=>{try{return JSON.parse(localStorage.getItem(_LS_AUDIO_KEY)||'{}');}catch{return {};}})();
 const _lsCache=(()=>{try{return JSON.parse(localStorage.getItem(_LS_KEY)||'{}');}catch{return {};}})();
-// Only save to localStorage on success — don't cache null so failures retry next visit
 function _savePhotoUrl(sci,url){_imgCache.set(sci,url);if(url){_lsCache[sci]=url;try{localStorage.setItem(_LS_KEY,JSON.stringify(_lsCache));}catch{}}}
 
-// FAST fetch: iNaturalist only — used for background sprite loading (no Wikipedia to avoid 429)
-async function fetchBirdImgFast(sci){
-  if(_imgCache.has(sci))return _imgCache.get(sci);
-  const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
-  try{
-    const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});
-    if(!r.ok)return null;
-    const d=await r.json();
-    const photo=d.results?.[0]?.default_photo;
-    if(photo){
-      const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);
-      if(url){_imgCache.set(sci,url);return url;}
-    }
-  }catch{}
-  _imgCache.set(sci,null);
-  return null;
-}
-// Rewrite static.inaturalist.org URLs to the S3 CDN which has proper CORS headers
-function toS3Url(url){
-  if(!url)return url;
-  return url.replace('https://static.inaturalist.org/photos/','https://inaturalist-open-data.s3.amazonaws.com/photos/');
-}
-
-// FULL fetch — all 3 sources run in parallel, first winner is used (Promise.any)
-// Each source gets its own AbortSignal — they never share a timed-out signal
+// Fetch bird photo — tries iNaturalist then Wikipedia, each with its own independent timeout
 async function fetchBirdImg(sci,en){
   if(_imgCache.has(sci))return _imgCache.get(sci);
   if(_lsCache[sci]){_imgCache.set(sci,_lsCache[sci]);return _lsCache[sci];}
-  const mkSig=()=>AbortSignal.timeout?AbortSignal.timeout(5000):undefined;
-  const wikiImg=async(title)=>{
-    const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:mkSig()});
-    if(!r.ok)throw 0;
-    const src=Object.values((await r.json()).query.pages)[0]?.thumbnail?.source;
-    if(!src)throw 0;
-    return src;
-  };
-  const inatImg=async()=>{
-    const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:mkSig()});
-    if(!r.ok)throw 0;
-    const photo=(await r.json()).results?.[0]?.default_photo;
-    const url=photo&&(photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null));
-    if(!url)throw 0;
-    return url;
-  };
-  const url=await Promise.any([wikiImg(sci),wikiImg(en),inatImg()]).catch(()=>null);
-  if(url)_savePhotoUrl(sci,url);
-  return url;
+  const s=()=>AbortSignal.timeout?AbortSignal.timeout(8000):undefined;
+  // 1. iNaturalist — has photos for all bird species
+  try{
+    const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:s()});
+    if(r.ok){const d=await r.json();const p=d.results?.[0]?.default_photo;const url=p&&(p.medium_url||p.url||(p.square_url?p.square_url.replace('/square.','/medium.'):null));if(url){_savePhotoUrl(sci,url);return url;}}
+  }catch{}
+  // 2. Wikipedia by scientific name
+  try{
+    const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(sci)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:s()});
+    if(r.ok){const d=await r.json();const src=Object.values(d.query.pages)[0]?.thumbnail?.source;if(src){_savePhotoUrl(sci,src);return src;}}
+  }catch{}
+  // 3. Wikipedia by English name
+  try{
+    const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(en)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:s()});
+    if(r.ok){const d=await r.json();const src=Object.values(d.query.pages)[0]?.thumbnail?.source;if(src){_savePhotoUrl(sci,src);return src;}}
+  }catch{}
+  return null;
 }
 
 // Popup
