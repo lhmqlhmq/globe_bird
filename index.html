@@ -427,11 +427,12 @@ B.forEach((b,i)=>{
 // If CORS headers are missing → onError fires, we do nothing, sprite stays as placeholder dot.
 // No SecurityError, no tainted canvas, no fetch CORS block.
 function applyBirdPhoto(spr,url){
+  // Use S3 CDN URL (has CORS headers) for WebGL textures; fall back silently if S3 404s
   new THREE.TextureLoader().load(
-    url,
+    toS3Url(url),
     (tex)=>{spr.material.map=tex;spr.material.needsUpdate=true;spr.scale.set(.22,.22,1);},
     undefined,
-    ()=>{}  // silently ignore load / CORS errors
+    ()=>{}  // silently ignore load / CORS / 404 errors
   );
 }
 loadQueue.forEach(({spr,b},i)=>{
@@ -448,9 +449,9 @@ const cv2=renderer.domElement;
 cv2.addEventListener('pointerdown',e=>{S.mouseDown=true;S.dragging=false;S.pmx=e.clientX;S.pmy=e.clientY;document.body.classList.add('dragging');});
 window.addEventListener('pointermove',e=>{S.mx=(e.clientX/innerWidth)*2-1;S.my=-(e.clientY/innerHeight)*2+1;if(S.mouseDown){const dx=e.clientX-S.pmx,dy=e.clientY-S.pmy;if(Math.abs(dx)+Math.abs(dy)>2)S.dragging=true;S.tRY-=dx*.003;S.tRX+=dy*.003;S.tRX=Math.max(-1.45,Math.min(1.45,S.tRX));S.pmx=e.clientX;S.pmy=e.clientY;}doHover(e);});
 window.addEventListener('pointerup',e=>{if(!S.dragging)doClick(e);S.mouseDown=false;S.dragging=false;document.body.classList.remove('dragging');});
-cv2.addEventListener('wheel',e=>{e.preventDefault();S.tDist+=e.deltaY*.006;S.tDist=Math.max(R*1.25,Math.min(R*5,S.tDist));},{passive:false});
+cv2.addEventListener('wheel',e=>{e.preventDefault();S.tDist+=e.deltaY*.006;S.tDist=Math.max(R*1.6,Math.min(R*5,S.tDist));},{passive:false});
 let ltd=0;cv2.addEventListener('touchstart',e=>{if(e.touches.length===2)ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);},{passive:true});
-cv2.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);S.tDist-=(d-ltd)*.015;S.tDist=Math.max(R*1.25,Math.min(R*5,S.tDist));ltd=d;}},{passive:true});
+cv2.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);S.tDist-=(d-ltd)*.015;S.tDist=Math.max(R*1.6,Math.min(R*5,S.tDist));ltd=d;}},{passive:true});
 
 function doHover(e){_m.set(S.mx,S.my);ray.setFromCamera(_m,camera);const h=ray.intersectObjects(markers);const tip=document.getElementById('tip');if(h.length>0&&h[0].object.visible){const b=h[0].object.userData.bird;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-8)+'px';tip.querySelector('.z').textContent=b.z;tip.querySelector('.e').textContent=b.e;cv2.style.cursor='pointer';if(S.hovered&&S.hovered!==h[0].object)S.hovered.scale.set(.2,.2,1);S.hovered=h[0].object;}else{tip.style.display='none';if(!S.mouseDown)cv2.style.cursor='grab';if(S.hovered){S.hovered.scale.set(.2,.2,1);S.hovered=null;}}}
 function doClick(e){_m.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(_m,camera);const h=ray.intersectObjects(markers);if(h.length>0&&h[0].object.visible)showPopup(h[0].object.userData.bird);}
@@ -477,7 +478,7 @@ async function fetchBirdImgFast(sci){
     const d=await r.json();
     const photo=d.results?.[0]?.default_photo;
     if(photo){
-      const url=toS3Url(photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null));
+      const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);
       if(url){_imgCache.set(sci,url);return url;}
     }
   }catch{}
@@ -495,7 +496,7 @@ async function fetchBirdImg(sci,en){
   if(_imgCache.has(sci))return _imgCache.get(sci);
   const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
   // 1. iNaturalist (fast, reliable, no rate-limit issues)
-  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=toS3Url(photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null));if(url){_imgCache.set(sci,url);return url;}}}}catch{}
+  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);if(url){_imgCache.set(sci,url);return url;}}}}catch{}
   // 2. Wikipedia by scientific name (fallback — can hit 429 under heavy load)
   try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(sci)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_imgCache.set(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
   // 3. Wikipedia by English name
@@ -540,9 +541,9 @@ async function playSound(bird){
     // Strategy 1: query by scientific name, no quality filter (avoids 404)
     let rec=null;
     const queries=[
-      `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.s)}`,
-      `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.e)}`,
-      `https://xeno-canto.org/api/2/recordings?query=sp:${encodeURIComponent(bird.s.split(' ').slice(0,2).join('+'))}`,
+      `https://www.xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.s)}`,
+      `https://www.xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.e)}`,
+      `https://www.xeno-canto.org/api/2/recordings?query=sp:${encodeURIComponent(bird.s.split(' ').slice(0,2).join('+'))}`,
     ];
     for(const url of queries){
       try{
@@ -559,10 +560,10 @@ async function playSound(bird){
     // xeno-canto file field can be: "//xeno-canto.org/xxx/download" or "https://..." or relative
     let audioUrl=rec.file||'';
     if(audioUrl.startsWith('//'))audioUrl='https:'+audioUrl;
-    else if(audioUrl.startsWith('/'))audioUrl='https://xeno-canto.org'+audioUrl;
-    else if(!audioUrl.startsWith('http'))audioUrl=`https://xeno-canto.org/${rec.id}/download`;
+    else if(audioUrl.startsWith('/'))audioUrl='https://www.xeno-canto.org'+audioUrl;
+    else if(!audioUrl.startsWith('http'))audioUrl=`https://www.xeno-canto.org/${rec.id}/download`;
     // Fallback: construct download URL from recording ID
-    if(!audioUrl)audioUrl=`https://xeno-canto.org/${rec.id}/download`;
+    if(!audioUrl)audioUrl=`https://www.xeno-canto.org/${rec.id}/download`;
 
     const a=new Audio();
     // Do NOT set crossOrigin — Xeno-canto CDN audio files don't send CORS headers
@@ -584,7 +585,7 @@ function stopSound(){if(S.audio){S.audio.pause();S.audio.currentTime=0;S.audio=n
 
 // Region buttons
 const rgnDiv=document.getElementById('rgn');
-Object.entries(REGIONS).forEach(([k,v])=>{const btn=document.createElement('button');btn.textContent=v.label;btn.dataset.r=k;if(k==='global')btn.classList.add('on');btn.onclick=()=>{rgnDiv.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');const rr=REGIONS[k],phi=(90-rr.lat)*Math.PI/180;S.tRX=Math.PI/2-phi;S.tRY=-rr.lng*Math.PI/180;S.tDist=R*rr.alt;if(k==='global')markers.forEach(m=>{m.visible=true;});else{const bd=RBOUNDS[k];markers.forEach((m,i)=>{const b=B[i];m.visible=b.la>=bd.la&&b.la<=bd.La&&b.lo>=bd.lo&&b.lo<=bd.Lo;});}S.region=k;};rgnDiv.appendChild(btn);});
+Object.entries(REGIONS).forEach(([k,v])=>{const btn=document.createElement('button');btn.textContent=v.label;btn.dataset.r=k;if(k==='global')btn.classList.add('on');btn.onclick=()=>{rgnDiv.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');const rr=REGIONS[k],phi=(90-rr.lat)*Math.PI/180;S.tRX=Math.PI/2-phi;S.tRY=(rr.lng+90)*Math.PI/180;S.tDist=R*rr.alt;if(k==='global')markers.forEach(m=>{m.visible=true;});else{const bd=RBOUNDS[k];markers.forEach((m,i)=>{const b=B[i];m.visible=b.la>=bd.la&&b.la<=bd.La&&b.lo>=bd.lo&&b.lo<=bd.Lo;});}S.region=k;};rgnDiv.appendChild(btn);});
 
 // Function buttons
 document.getElementById('ck-grid').onchange=e=>{gridG.visible=e.target.checked;};
@@ -600,7 +601,7 @@ document.getElementById('ck-story').onchange=function(){
       const b=B[storyIdx%B.length];
       // Fly camera to bird location
       const phi=(90-b.la)*Math.PI/180;
-      S.tRX=Math.PI/2-phi;S.tRY=-b.lo*Math.PI/180;S.tDist=R*1.6;
+      S.tRX=Math.PI/2-phi;S.tRY=(b.lo+90)*Math.PI/180;S.tDist=R*1.6;
       showPopup(b);
       storyIdx++;
       storyTimer=setTimeout(storyStep,5000);
