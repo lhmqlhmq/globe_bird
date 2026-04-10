@@ -723,35 +723,41 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     return {canvas:cv, aspect:W/H, removedFrac};
   }
 
-  // Apply transparent cutout to sprite; fall back silently on CORS / load failure.
+  // Apply transparent cutout to sprite.
+  // Uses fetch()+blobURL to bypass the browser image cache CORS conflict:
+  // popup loads images without crossOrigin (no CORS headers cached), so
+  // re-loading the same URL with crossOrigin='anonymous' would hit a stale
+  // no-CORS cached entry and throw SecurityError on drawImage.
+  // fetch() uses a separate cache keyed on (url+mode), so it always gets
+  // a fresh CORS-enabled response that is safe to draw onto a canvas.
   function applyPhoto(spr,b,url){
     if(!url)return;
-    const img=new Image(); img.crossOrigin='anonymous';
-    img.onload=()=>{
-      try{
-        const{canvas,aspect,removedFrac}=makeCutoutTex(img);
-        const tex=new THREE.CanvasTexture(canvas);
-        // If background removal stripped ≥8% of pixels → real cutout achieved.
-        // Use higher alphaTest to clip semi-transparent edge fringe cleanly.
-        // If <8% removed (complex background): still use the photo but scale down
-        // so it doesn't dominate — the bird is still visible, just with background.
-        const goodCutout=removedFrac>=0.12;
-        const mat=new THREE.SpriteMaterial({
-          map:tex, transparent:true,
-          alphaTest: goodCutout ? 0.25 : 0.1,
-          depthTest:true, sizeAttenuation:true
-        });
-        if(spr.material.map) spr.material.map.dispose();
-        spr.material.dispose();
-        spr.material=mat;
-        // Good cutout: natural aspect ratio — bird appears directly on globe.
-        // Weak cutout: scaled down so background remnant stays unobtrusive.
-        const h=goodCutout?0.26:0.15;
-        spr.scale.set(h*aspect,h,1);
-      }catch(e){} // SecurityError from tainted canvas → keep colored dot
-    };
-    img.onerror=()=>{}; // network failure → keep colored dot
-    img.src=url;
+    fetch(url,{mode:'cors',credentials:'omit'})
+      .then(r=>r.ok?r.blob():Promise.reject())
+      .then(blob=>{
+        const blobUrl=URL.createObjectURL(blob);
+        const img=new Image();
+        img.onload=()=>{
+          try{
+            const{canvas,aspect,removedFrac}=makeCutoutTex(img);
+            const goodCutout=removedFrac>=0.12;
+            const tex=new THREE.CanvasTexture(canvas);
+            const mat=new THREE.SpriteMaterial({
+              map:tex,transparent:true,
+              alphaTest:goodCutout?0.25:0.1,
+              depthTest:true,sizeAttenuation:true
+            });
+            if(spr.material.map)spr.material.map.dispose();
+            spr.material.dispose(); spr.material=mat;
+            const h=goodCutout?0.26:0.15;
+            spr.scale.set(h*aspect,h,1);
+          }catch(e){}
+          URL.revokeObjectURL(blobUrl);
+        };
+        img.onerror=()=>URL.revokeObjectURL(blobUrl);
+        img.src=blobUrl;
+      })
+      .catch(()=>{}); // CORS/network fail → keep colored dot silently
   }
 
   // Queue: cached-URL birds first (instant, no API call);
