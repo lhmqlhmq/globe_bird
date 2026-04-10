@@ -478,10 +478,16 @@ async function fetchBirdImg(sci,en){
   if(_imgCache.has(sci))return _imgCache.get(sci);
   if(_lsCache[sci]){_imgCache.set(sci,_lsCache[sci]);return _lsCache[sci];}
   const s=()=>AbortSignal.timeout?AbortSignal.timeout(8000):undefined;
-  // 1. iNaturalist — has photos for all bird species
+  // 1. iNaturalist — prefer S3 URL (inaturalist-open-data.s3.amazonaws.com) which has
+  //    CORS headers. The medium_url points to static.inaturalist.org which blocks CORS.
+  //    Build S3 URL from square_url by replacing /square. → /medium.
   try{
     const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:s()});
-    if(r.ok){const d=await r.json();const p=d.results?.[0]?.default_photo;const url=p&&(p.medium_url||p.url||(p.square_url?p.square_url.replace('/square.','/medium.'):null));if(url){_savePhotoUrl(sci,url);return url;}}
+    if(r.ok){const d=await r.json();const p=d.results?.[0]?.default_photo;
+      // Prefer S3 (CORS-ok) over medium_url (static.inaturalist.org = no CORS)
+      const s3url=p?.square_url?.includes('s3.amazonaws.com')?p.square_url.replace('/square.','/medium.'):null;
+      const url=s3url||p?.medium_url||p?.url;
+      if(url){_savePhotoUrl(sci,url);return url;}}
   }catch{}
   // 2. Wikipedia by scientific name
   try{
@@ -697,18 +703,21 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     }).catch(()=>{});
   }
 
-  // ── Lazy-load AI module (first call triggers ~5MB model download) ─────────
-  // removeBackground is a NAMED export (not default) from @imgly/background-removal
-  const AI_URL='https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs';
+  // ── Lazy-load AI module via esm.sh (resolves bare specifiers like onnxruntime-web) ──
+  // jsDelivr fails because index.mjs has bare import 'onnxruntime-web' — no bundler to resolve it.
+  // esm.sh rewrites all imports to absolute CDN URLs, so it works directly in browsers.
+  const AI_URL='https://esm.sh/@imgly/background-removal@1.7.0';
+  // Model files (ONNX + WASM) are served from staticimgly.com by default
+  const AI_PUBLIC='https://staticimgly.com/@imgly/background-removal-data/1.7.0/dist/';
   let _aiMod=null, _aiProm=null;
   function loadAI(){
     if(_aiMod)return Promise.resolve(_aiMod);
     if(_aiProm)return _aiProm;
     _aiProm=import(AI_URL).then(async m=>{
       _aiMod=m;
-      // Pre-warm: download ONNX model files now so first bird processes fast
+      // Pre-warm: start downloading ONNX model files in background
       if(typeof m.preload==='function'){
-        m.preload({model:'isnet_quint8'}).catch(()=>{});
+        m.preload({model:'isnet_quint8',publicPath:AI_PUBLIC}).catch(()=>{});
       }
       return m;
     }).catch(()=>null);
@@ -718,11 +727,11 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
   // ── Run AI background removal on a Blob ───────────────────────────────────
   async function aiRemoveBg(srcBlob){
     const mod=await loadAI(); if(!mod)throw new Error('no AI');
-    // Named export: mod.removeBackground (NOT mod.default)
-    const fn=mod.removeBackground;
+    const fn=mod.removeBackground; // Named export — NOT mod.default
     if(typeof fn!=='function')throw new Error('no removeBackground fn');
     return fn(srcBlob,{
       model:'isnet_quint8',
+      publicPath:AI_PUBLIC,
       output:{format:'image/png',quality:0.92}
     });
   }
@@ -816,12 +825,14 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
       return;
     }
 
-    // Fetch source image
+    // Fetch source image — static.inaturalist.org has no CORS, convert to S3 URL
+    const fetchUrl=url.replace('https://static.inaturalist.org/','https://inaturalist-open-data.s3.amazonaws.com/');
     let srcBlob;
     try{
-      const r=await fetch(url,{mode:'cors',credentials:'omit'});
+      const r=await fetch(fetchUrl,{mode:'cors',credentials:'omit'});
       if(!r.ok)return;
       srcBlob=await r.blob();
+      if(!srcBlob.type.startsWith('image/'))return; // guard: reject HTML/text responses
     }catch{return;}
 
     // Try AI removal; fall back to color-distance
