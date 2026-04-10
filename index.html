@@ -448,8 +448,11 @@ x.fillStyle='rgba(232,216,168,0.88)';x.font='bold 21px "Noto Serif SC",serif';x.
 x.fillStyle='rgba(140,120,90,0.65)';x.font='italic 12px "Noto Sans SC",sans-serif';x.fillText(en||'',250,234);// border
 x.strokeStyle='rgba(200,184,138,0.07)';x.lineWidth=1;x.strokeRect(12,12,476,276);return c.toDataURL();}
 
-// Cache to avoid re-fetching the same species
+// In-session cache + persistent localStorage cache for photo URLs
 const _imgCache=new Map();
+const _LS_KEY='birdphotos_v2';
+const _lsCache=(()=>{try{return JSON.parse(localStorage.getItem(_LS_KEY)||'{}');}catch{return {};}})();
+function _savePhotoUrl(sci,url){_imgCache.set(sci,url);_lsCache[sci]=url;try{localStorage.setItem(_LS_KEY,JSON.stringify(_lsCache));}catch{}}
 
 // FAST fetch: iNaturalist only — used for background sprite loading (no Wikipedia to avoid 429)
 async function fetchBirdImgFast(sci){
@@ -474,17 +477,19 @@ function toS3Url(url){
   return url.replace('https://static.inaturalist.org/photos/','https://inaturalist-open-data.s3.amazonaws.com/photos/');
 }
 
-// FULL fetch: Wikipedia first, iNaturalist fallback — used only in popup (one request at a time)
+// FULL fetch — Wikipedia first (fast global CDN), iNaturalist fallback
+// Checks localStorage cache so repeat visits are instant (no API call)
 async function fetchBirdImg(sci,en){
   if(_imgCache.has(sci))return _imgCache.get(sci);
-  const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
-  // 1. iNaturalist (fast, reliable, no rate-limit issues)
-  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);if(url){_imgCache.set(sci,url);return url;}}}}catch{}
-  // 2. Wikipedia by scientific name (fallback — can hit 429 under heavy load)
-  try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(sci)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_imgCache.set(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
-  // 3. Wikipedia by English name
-  try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(en)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_imgCache.set(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
-  _imgCache.set(sci,null);
+  if(_lsCache[sci]!==undefined){_imgCache.set(sci,_lsCache[sci]);return _lsCache[sci];}
+  const sig=AbortSignal.timeout?AbortSignal.timeout(4000):undefined;
+  // 1. Wikipedia by scientific name — fast Wikimedia CDN, strong CORS
+  try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(sci)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_savePhotoUrl(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
+  // 2. Wikipedia by English name
+  try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(en)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_savePhotoUrl(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
+  // 3. iNaturalist fallback (may rate-limit under heavy load)
+  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);if(url){_savePhotoUrl(sci,url);return url;}}}}catch{}
+  _savePhotoUrl(sci,null);
   return null;
 }
 
@@ -531,32 +536,48 @@ async function playSound(bird){
   }
 
   try{
-    // Strategy 1: query by scientific name, no quality filter (avoids 404)
-    let rec=null;
-    const queries=[
-      `https://www.xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.s)}`,
-      `https://www.xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.e)}`,
-      `https://www.xeno-canto.org/api/2/recordings?query=sp:${encodeURIComponent(bird.s.split(' ').slice(0,2).join('+'))}`,
+    // --- Source 1: xeno-canto API (non-www — www. redirect strips CORS headers) ---
+    let audioUrl=null;
+    const xcQueries=[
+      `https://xeno-canto.org/api/2/recordings?query=${bird.s.replace(/ /g,'+')}`,
+      `https://xeno-canto.org/api/2/recordings?query=${bird.e.replace(/ /g,'+')}`,
     ];
-    for(const url of queries){
+    for(const url of xcQueries){
       try{
-        const r=await fetch(url);
+        const r=await fetch(url,{mode:'cors',credentials:'omit'});
         if(!r.ok)continue;
         const d=await r.json();
-        if(d.recordings?.length){rec=d.recordings[0];break;}
+        if(d.recordings?.length){
+          let f=d.recordings[0].file||'';
+          if(f.startsWith('//'))f='https:'+f;
+          else if(f.startsWith('/'))f='https://xeno-canto.org'+f;
+          else if(!f.startsWith('http'))f=`https://xeno-canto.org/${d.recordings[0].id}/download`;
+          if(f)audioUrl=f;
+          break;
+        }
       }catch{}
     }
 
-    if(!rec){resetBtn('暂无录音');return;}
+    // --- Source 2: Wikimedia Commons (fallback — strong CORS, free .ogg files) ---
+    if(!audioUrl){
+      const sig2=AbortSignal.timeout?AbortSignal.timeout(5000):undefined;
+      for(const q of [bird.s,bird.e]){
+        if(audioUrl)break;
+        try{
+          const r=await fetch(`https://commons.wikimedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srnamespace=6&srlimit=10&format=json&origin=*`,{signal:sig2});
+          if(!r.ok)continue;
+          const d=await r.json();
+          const af=(d.query?.search||[]).filter(f=>/\.(ogg|mp3|flac)$/i.test(f.title));
+          if(!af.length)continue;
+          const r2=await fetch(`https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(af[0].title)}&prop=imageinfo&iiprop=url&format=json&origin=*`,{signal:sig2});
+          if(!r2.ok)continue;
+          const d2=await r2.json();
+          audioUrl=Object.values(d2.query.pages)[0]?.imageinfo?.[0]?.url||null;
+        }catch{}
+      }
+    }
 
-    // Build a clean https audio URL from the recording
-    // xeno-canto file field can be: "//xeno-canto.org/xxx/download" or "https://..." or relative
-    let audioUrl=rec.file||'';
-    if(audioUrl.startsWith('//'))audioUrl='https:'+audioUrl;
-    else if(audioUrl.startsWith('/'))audioUrl='https://www.xeno-canto.org'+audioUrl;
-    else if(!audioUrl.startsWith('http'))audioUrl=`https://www.xeno-canto.org/${rec.id}/download`;
-    // Fallback: construct download URL from recording ID
-    if(!audioUrl)audioUrl=`https://www.xeno-canto.org/${rec.id}/download`;
+    if(!audioUrl){resetBtn('暂无录音');return;}
 
     const a=new Audio();
     // Do NOT set crossOrigin — Xeno-canto CDN audio files don't send CORS headers
