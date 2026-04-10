@@ -670,7 +670,8 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
   if(location.protocol==='file:')return; // file:// blocks crossOrigin canvas draw
 
   // Build transparent cutout texture from a loaded <img> element.
-  // Returns {canvas, aspect} or throws on security/CORS error.
+  // Returns {canvas, aspect, removed} where removed = fraction of transparent pixels.
+  // Throws on SecurityError (tainted canvas from CORS failure).
   function makeCutoutTex(imgEl){
     const W=256, H=Math.max(64,Math.round(256*imgEl.naturalHeight/imgEl.naturalWidth));
     const cv=document.createElement('canvas'); cv.width=W; cv.height=H;
@@ -687,23 +688,39 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     const bg=[med(0),med(1),med(2)];
 
     // ── Step 2: per-pixel colour-distance threshold removal ───────────────
-    const T=55; // distance threshold (0–441); raise for more aggressive removal
+    // T=68: aggressive enough to strip sky/water/foliage backgrounds.
+    // Soft quadratic fade in the T±20 band gives anti-aliased edges.
+    const T=68,FADE=20;
+    let removed=0;
     for(let i=0,j=0;i<W*H;i++,j+=4){
       const d=Math.sqrt((px[j]-bg[0])**2+(px[j+1]-bg[1])**2+(px[j+2]-bg[2])**2);
-      if(d<T) px[j+3]=Math.round((d/T)**1.5*255); // soft fade near threshold
+      if(d<T-FADE){px[j+3]=0;removed++;}           // fully transparent
+      else if(d<T){                                  // soft transition band
+        px[j+3]=Math.round(((d-(T-FADE))/FADE)**2*255);
+        removed+=px[j+3]<128?1:0;
+      }
     }
-    ctx.putImageData(id,0,0);
+    const removedFrac=removed/(W*H);
 
-    // ── Step 3: feathered oval vignette (destination-in) to clean edges ───
+    // ── Step 3: only apply a VERY subtle edge feather (NOT a circular crop) ─
+    // This removes stray 1-px background remnants at the texture edges without
+    // creating the oval / circular-crop look.
+    ctx.putImageData(id,0,0);
     ctx.globalCompositeOperation='destination-in';
-    const g=ctx.createRadialGradient(W/2,H/2,W*0.22,W/2,H/2,W*0.53);
-    g.addColorStop(0,'rgba(255,255,255,1)');
-    g.addColorStop(0.72,'rgba(255,255,255,0.97)');
-    g.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    // Tiny 2px margin fade on rectangle edges only
+    const gL=ctx.createLinearGradient(0,0,6,0);gL.addColorStop(0,'transparent');gL.addColorStop(1,'white');
+    const gR=ctx.createLinearGradient(W,0,W-6,0);gR.addColorStop(0,'transparent');gR.addColorStop(1,'white');
+    const gT=ctx.createLinearGradient(0,0,0,6);gT.addColorStop(0,'transparent');gT.addColorStop(1,'white');
+    const gB=ctx.createLinearGradient(0,H,0,H-6);gB.addColorStop(0,'transparent');gB.addColorStop(1,'white');
+    // Fill 95% centre as fully opaque, let edge gradients handle borders
+    ctx.fillStyle='white';ctx.fillRect(6,6,W-12,H-12);
+    ctx.fillStyle=gL;ctx.fillRect(0,0,6,H);
+    ctx.fillStyle=gR;ctx.fillRect(W-6,0,6,H);
+    ctx.fillStyle=gT;ctx.fillRect(0,0,W,6);
+    ctx.fillStyle=gB;ctx.fillRect(0,H-6,W,6);
     ctx.globalCompositeOperation='source-over';
 
-    return {canvas:cv, aspect:W/H};
+    return {canvas:cv, aspect:W/H, removedFrac};
   }
 
   // Apply transparent cutout to sprite; fall back silently on CORS / load failure.
@@ -712,17 +729,25 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
     const img=new Image(); img.crossOrigin='anonymous';
     img.onload=()=>{
       try{
-        const{canvas,aspect}=makeCutoutTex(img);
+        const{canvas,aspect,removedFrac}=makeCutoutTex(img);
         const tex=new THREE.CanvasTexture(canvas);
+        // If background removal stripped ≥8% of pixels → real cutout achieved.
+        // Use higher alphaTest to clip semi-transparent edge fringe cleanly.
+        // If <8% removed (complex background): still use the photo but scale down
+        // so it doesn't dominate — the bird is still visible, just with background.
+        const goodCutout=removedFrac>=0.08;
         const mat=new THREE.SpriteMaterial({
-          map:tex, transparent:true, alphaTest:0.15,
+          map:tex, transparent:true,
+          alphaTest: goodCutout ? 0.25 : 0.1,
           depthTest:true, sizeAttenuation:true
         });
         if(spr.material.map) spr.material.map.dispose();
         spr.material.dispose();
         spr.material=mat;
-        // Scale to natural aspect ratio so tall/wide birds look correct
-        const h=0.32; spr.scale.set(h*aspect,h,1);
+        // Good cutout: natural aspect ratio at full size so bird shape is preserved.
+        // Weak cutout: slightly smaller so residual background is less prominent.
+        const h=goodCutout?0.32:0.24;
+        spr.scale.set(h*aspect,h,1);
       }catch(e){} // SecurityError from tainted canvas → keep colored dot
     };
     img.onerror=()=>{}; // network failure → keep colored dot
