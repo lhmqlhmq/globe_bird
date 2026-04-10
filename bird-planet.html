@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>万羽拾音 | Bird Planet</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#050508}
+body{color:#e0ddd5;font-family:'Noto Sans SC',system-ui,sans-serif;cursor:grab}
+body.dragging{cursor:grabbing}
+canvas{display:block;width:100%;height:100%;position:fixed;inset:0}
+#loading{position:fixed;inset:0;z-index:2000;background:#07070c;display:flex;flex-direction:column;align-items:center;justify-content:center;transition:opacity 1s ease,visibility 1s}
+#loading.done{opacity:0;visibility:hidden;pointer-events:none}
+#loading h1{font-family:'Noto Serif SC',serif;font-size:clamp(1.6rem,4vw,2.8rem);letter-spacing:.5em;color:#c8b88a;margin-bottom:.4rem;text-indent:.5em}
+#loading .sub{color:#666;font-size:.82rem;letter-spacing:.25em}
+#loading .bar-wrap{width:180px;height:1.5px;background:#1a1a1a;margin-top:2.2rem;border-radius:1px;overflow:hidden}
+#loading .bar{height:100%;width:0%;background:linear-gradient(90deg,#c8b88a,#e8d8a8);transition:width .4s}
+#loading .hint{color:#444;font-size:.65rem;margin-top:1.2rem;letter-spacing:.1em}
+#title{position:fixed;top:clamp(16px,3vh,32px);left:50%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:10}
+#title h1{font-family:'Noto Serif SC',serif;font-size:clamp(1.1rem,2.5vw,1.6rem);letter-spacing:.45em;color:rgba(200,184,138,.88);text-shadow:0 0 40px rgba(200,184,138,.2);text-indent:.45em}
+#title .count{font-size:.72rem;color:rgba(200,184,138,.4);letter-spacing:.3em;margin-top:3px}
+#tip{position:fixed;z-index:60;background:rgba(15,13,10,.9);backdrop-filter:blur(12px);border:1px solid rgba(200,184,138,.12);border-radius:6px;padding:5px 11px;pointer-events:none;display:none;font-size:.75rem;white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+#tip .z{color:#e8d8a8;font-weight:500}
+#tip .e{color:#888;font-size:.65rem;margin-top:1px}
+#popup{position:fixed;z-index:50;bottom:clamp(80px,12vh,120px);left:50%;transform:translateX(-50%);width:min(360px,90vw);background:rgba(10,8,6,.96);backdrop-filter:blur(28px);border:1px solid rgba(200,184,138,.12);border-radius:16px;display:none;overflow:hidden;box-shadow:0 32px 100px rgba(0,0,0,.85),0 0 0 1px rgba(200,184,138,.06);animation:popIn .35s cubic-bezier(.2,.9,.3,1)}
+@keyframes popIn{from{opacity:0;transform:translateX(-50%) translateY(16px) scale(.97)}to{opacity:1;transform:translateX(-50%) translateY(0) scale(1)}}
+#popup .x{position:absolute;top:10px;right:10px;width:26px;height:26px;border-radius:50%;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.12);color:#666;font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:2;transition:all .15s}
+#popup .x:hover{color:#fff;background:rgba(255,255,255,.16)}
+#popup .img{width:100%;height:220px;background:#080604;display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+#popup .img img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 4px 24px rgba(0,0,0,.8))}
+#popup .img .sp{width:24px;height:24px;border:2px solid #222;border-top-color:#c8b88a;border-radius:50%;animation:spin .8s linear infinite;position:absolute}
+@keyframes spin{to{transform:rotate(360deg)}}
+#popup .info{padding:16px 20px 20px}
+#popup .nz{font-family:'Noto Serif SC',serif;font-size:1.25rem;color:#e8d8a8;letter-spacing:.05em}
+#popup .ne{font-size:.74rem;color:#786858;margin-top:3px;font-style:italic;letter-spacing:.03em}
+#popup .desc{font-size:.76rem;color:#8a7a68;margin-top:10px;line-height:1.75;border-top:1px solid rgba(200,184,138,.07);padding-top:10px}
+#popup .acts{margin-top:14px;display:flex;gap:8px}
+#popup .acts button{background:rgba(200,184,138,.07);border:1px solid rgba(200,184,138,.13);color:#b8a878;padding:6px 14px;border-radius:20px;font-size:.7rem;cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-family:inherit;transition:all .15s;letter-spacing:.02em}
+#popup .acts button:hover{background:rgba(200,184,138,.15);border-color:rgba(200,184,138,.25);color:#e8d8a8}
+#popup .acts button.playing{background:rgba(200,184,138,.18);color:#fff}
+#popup .sci{font-size:.6rem;color:#444;margin-top:8px;font-style:italic;letter-spacing:.04em}
+#audio-ind{position:fixed;top:clamp(16px,3vh,32px);right:20px;z-index:10;display:none;align-items:center;gap:6px;color:#c8b88a;font-size:.68rem;background:rgba(15,13,10,.7);backdrop-filter:blur(8px);padding:5px 12px 5px 8px;border-radius:20px;border:1px solid rgba(200,184,138,.1)}
+.bars{display:flex;gap:1.5px;align-items:flex-end;height:13px}
+.bars i{display:block;width:2px;background:#c8b88a;border-radius:1px;animation:bar .5s ease infinite alternate}
+.bars i:nth-child(1){height:4px;animation-delay:0s}.bars i:nth-child(2){height:9px;animation-delay:.12s}.bars i:nth-child(3){height:5px;animation-delay:.24s}.bars i:nth-child(4){height:11px;animation-delay:.08s}.bars i:nth-child(5){height:6px;animation-delay:.2s}
+@keyframes bar{to{height:2px}}
+#ctrls{position:fixed;bottom:0;left:0;right:0;z-index:20;padding:0 0 clamp(14px,2.5vh,24px);display:flex;flex-direction:column;align-items:center;gap:8px;pointer-events:none}
+#ctrls>*{pointer-events:auto}
+#rgn{display:flex;gap:3px;flex-wrap:wrap;justify-content:center;padding:0 12px}
+#rgn button{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:#999;font-size:.68rem;padding:4px 13px;border-radius:14px;cursor:pointer;transition:all .2s;font-family:inherit;letter-spacing:.03em}
+#rgn button:hover{background:rgba(255,255,255,.08);color:#ddd}
+#rgn button.on{background:rgba(200,184,138,.14);border-color:rgba(200,184,138,.22);color:#e8d8a8}
+#fn{display:flex;gap:3px;align-items:center;flex-wrap:wrap;justify-content:center;padding:0 12px}
+#fn label{font-size:.66rem;color:#888;cursor:pointer;display:flex;align-items:center;gap:3px;padding:3px 7px;border-radius:4px;transition:color .15s}
+#fn label:hover{color:#bbb}
+#fn input[type=checkbox]{accent-color:#c8b88a;width:12px;height:12px}
+#fn button{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);color:#888;font-size:.66rem;padding:3px 11px;border-radius:11px;cursor:pointer;transition:all .2s;font-family:inherit}
+#fn button:hover{background:rgba(255,255,255,.08);color:#ccc}
+#fn button.on{background:rgba(200,184,138,.12);border-color:rgba(200,184,138,.2);color:#e8d8a8}
+#credits{position:fixed;bottom:5px;right:10px;font-size:.5rem;color:#333;z-index:5}
+#file-warn{display:none;position:fixed;top:0;left:0;right:0;z-index:3000;background:rgba(180,90,0,.95);color:#fff;font-size:.78rem;text-align:center;padding:8px 16px;letter-spacing:.02em;line-height:1.5}
+#file-warn strong{color:#ffe066}
+#file-warn button{margin-left:14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:2px 10px;border-radius:10px;cursor:pointer;font-size:.72rem}
+</style>
+</head>
+<body>
+<div id="file-warn">⚠ 检测到 <strong>file://</strong> 协议 — 鸟鸣音频与部分鸟类照片无法加载（受浏览器 CORS 限制）。请用本地服务器访问：<strong>http://localhost:8765/bird-planet.html</strong><button onclick="document.getElementById('file-warn').style.display='none'">✕ 关闭</button></div>
+<div id="loading"><h1>万 羽 拾 音</h1><div class="sub">Bird Planet</div><div class="bar-wrap"><div class="bar" id="lbar"></div></div><div class="hint">正在构建鸟类星球...</div></div>
+<div id="title"><h1>万 羽 拾 音</h1><div class="count" id="cnt">Loading...</div></div>
+<canvas id="c"></canvas>
+<div id="tip"><div class="z"></div><div class="e"></div></div>
+<div id="popup"><button class="x" id="pop-close">×</button><div class="img"><div class="sp" id="img-spin"></div><img id="pop-img" src="" alt=""></div><div class="info"><div class="nz" id="pop-zh"></div><div class="ne" id="pop-en"></div><div class="desc" id="pop-desc"></div><div class="acts"><button id="pop-play"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> 聆听鸟鸣</button><button id="pop-wiki"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Wiki</button></div><div class="sci" id="pop-sci"></div></div></div>
+<div id="audio-ind"><div class="bars"><i></i><i></i><i></i><i></i><i></i></div><span id="aud-name"></span></div>
+<div id="ctrls"><div id="rgn"></div><div id="fn"><label><input type="checkbox" id="ck-grid" checked> Grid</label><label><input type="checkbox" id="ck-story"> Story</label><label><input type="checkbox" id="ck-routes" checked> Routes</label><button id="b-scatter">Scatter</button><button id="b-migrate">Migrate</button><button id="b-mute">Mute</button><button id="b-rotate" class="on">Rotate</button></div></div>
+<div id="credits">NASA · Xeno-canto · Wikipedia · Three.js</div>
+<script type="importmap">{"imports":{"three":"https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.module.js"}}</script>
+<script type="module">
+import*as THREE from'three';
+const R=5,SEG=72,REGIONS={global:{lat:15,lng:20,alt:2.6,label:'Global'},asia:{lat:35,lng:100,alt:1.5,label:'Asia'},europe:{lat:50,lng:12,alt:1.4,label:'Europe'},africa:{lat:2,lng:22,alt:1.6,label:'Africa'},namerica:{lat:38,lng:-100,alt:1.5,label:'N.Am'},samerica:{lat:-15,lng:-58,alt:1.6,label:'S.Am'},arctic:{lat:76,lng:0,alt:1.2,label:'Arctic'},antarctic:{lat:-76,lng:0,alt:1.2,label:'Antarctic'}};
+const RBOUNDS={asia:{la:-15,La:72,lo:40,Lo:180},europe:{la:34,La:72,lo:-25,Lo:50},africa:{la:-36,La:38,lo:-20,Lo:55},namerica:{la:8,La:72,lo:-170,Lo:-50},samerica:{la:-56,La:14,lo:-82,Lo:-34},arctic:{la:60,La:90,lo:-180,Lo:180},antarctic:{la:-90,La:-55,lo:-180,Lo:180}};
+// Textures are fully procedural — zero remote URLs, zero CORS, works from file://
+const S={autoRotate:true,muted:false,scattered:false,migrating:false,gridOn:true,routesOn:true,mouseDown:false,dragging:false,mx:0,my:0,pmx:0,pmy:0,rY:0,rX:.35,tRY:0,tRX:.35,dist:R*2.6,tDist:R*2.6,bird:null,audio:null,hovered:null,region:'global'};
+
+const canvas=document.getElementById('c');
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x050508);
+const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,500);
+const clock=new THREE.Clock();const ray=new THREE.Raycaster();const _m=new THREE.Vector2();
+const sun=new THREE.DirectionalLight(0xfff5e0,1.9);sun.position.set(-25,8,18);scene.add(sun);
+scene.add(new THREE.AmbientLight(0x1a2030,.25));
+const fill=new THREE.DirectionalLight(0x2a3448,.12);fill.position.set(12,-12,-8);scene.add(fill);
+function ll2v(la,lo,r){const p=(90-la)*Math.PI/180,t=(lo+180)*Math.PI/180;return new THREE.Vector3(-r*Math.sin(p)*Math.cos(t),r*Math.cos(p),r*Math.sin(p)*Math.sin(t));}
+
+// ── Real photographic Earth textures (NASA / Three.js examples) ─────────────
+function makeEarthTextures(){
+  const loader=new THREE.TextureLoader();
+  const BASE='https://threejs.org/examples/textures/planets/';
+  const dayTex=loader.load(BASE+'earth_atmos_2048.jpg');
+  dayTex.encoding=THREE.sRGBEncoding;
+  const nightTex=loader.load(BASE+'earth_lights_2048.png');
+  nightTex.encoding=THREE.sRGBEncoding;
+  const specTex=loader.load(BASE+'earth_specular_2048.jpg');
+  const cloudTex=loader.load(BASE+'earth_clouds_1024.png');
+  return {dayTex,nightTex,specTex,cloudTex};
+}
+// ── Procedural fallback (unused — kept as emergency fallback) ─────────────────
+function makeEarthTexturesProcedural_UNUSED(){
+  const W=2048,H=1024;
+  // Seeded noise for deterministic land shapes
+  let _seed=42;
+  function rng(){_seed=(_seed*1664525+1013904223)&0xffffffff;return(_seed>>>0)/4294967296;}
+  function noise(x,y,oct){let v=0,a=1,f=1,max=0;for(let i=0;i<oct;i++){const ix=Math.floor(x*f),iy=Math.floor(y*f),fx=(x*f)%1,fy=(y*f)%1;const sx=fx*fx*(3-2*fx),sy=fy*fy*(3-2*fy);function h(a,b){_seed=(a*374761393+b*668265263)^(_seed);return(_seed>>>0)/4294967296;}const n=h(ix,iy)*(1-sx)*(1-sy)+h(ix+1,iy)*sx*(1-sy)+h(ix,iy+1)*(1-sx)*sy+h(ix+1,iy+1)*sx*sy;v+=n*a;max+=a;a*=.5;f*=2;}return v/max;}
+
+  // --- Day texture ---
+  const dc=document.createElement('canvas');dc.width=W;dc.height=H;
+  const dx=dc.getContext('2d');const dImg=dx.createImageData(W,H);const dd=dImg.data;
+  // Continents approximated by lat/lon zones with noise
+  const LAND=[
+    // [lon_center, lat_center, lon_r, lat_r, weight]  (lon -180..180, lat -90..90)
+    [20,15,38,32,1.2],   // Africa
+    [80,30,55,32,1.1],   // Asia
+    [15,54,25,18,0.9],   // Europe
+    [-95,48,42,24,1.0],  // N America
+    [-58,-15,28,30,0.9], // S America
+    [134,-25,20,18,0.8], // Australia
+    [75,68,30,14,0.6],   // Russia north
+    [-40,72,20,10,0.5],  // Greenland
+    [27,-74,40,10,0.4],  // Antarctica
+  ];
+  for(let py=0;py<H;py++){for(let px=0;px<W;px++){
+    const lon=(px/W)*360-180,lat=90-(py/H)*180;
+    const idx=(py*W+px)*4;
+    // Ocean base
+    let isLand=false,landStr=0;
+    for(const[lc,ltc,lr,ltr,w]of LAND){
+      let dlon=Math.abs(lon-lc);if(dlon>180)dlon=360-dlon;
+      const dlat=Math.abs(lat-ltc);
+      const d=Math.sqrt((dlon/lr)**2+(dlat/ltr)**2);
+      _seed=42;
+      const n=noise(px/W*6+lc*.1,py/H*6+ltc*.1,5);
+      const str=(1-d)*w+n*.35-.18;
+      if(str>landStr){landStr=str;}
+    }
+    isLand=landStr>0.38;
+    if(lat<-70){isLand=true;landStr=1;}// Antarctica
+    if(lat>82){isLand=true;landStr=0.9;}// Arctic
+    if(isLand){
+      // Land: green/brown based on lat
+      const arid=Math.abs(lat-25)<18||Math.abs(lat+20)<12;
+      const polar=Math.abs(lat)>65;
+      const tropical=Math.abs(lat)<20;
+      let r,g,b;
+      if(polar){r=220+Math.random()*20;g=225+Math.random()*20;b=235+Math.random()*15;}
+      else if(arid){r=180+Math.random()*40;g=155+Math.random()*35;b=100+Math.random()*30;}
+      else if(tropical){r=50+Math.random()*30;g=100+Math.random()*40;b=50+Math.random()*20;}
+      else{r=70+Math.random()*40;g=110+Math.random()*40;b=55+Math.random()*25;}
+      dd[idx]=r;dd[idx+1]=g;dd[idx+2]=b;dd[idx+3]=255;
+    }else{
+      // Ocean: deep blue with depth variation
+      const depth=0.4+0.6*(0.5+0.5*Math.sin(lat*0.08)*Math.cos(lon*0.05));
+      dd[idx]=Math.round(10+depth*30);dd[idx+1]=Math.round(30+depth*60);dd[idx+2]=Math.round(80+depth*90);dd[idx+3]=255;
+    }
+  }}
+  dx.putImageData(dImg,0,0);
+  // Ice caps overlay
+  const iceg=dx.createLinearGradient(0,0,0,H);
+  iceg.addColorStop(0,'rgba(230,240,255,1)');iceg.addColorStop(.04,'rgba(230,240,255,.85)');
+  iceg.addColorStop(.065,'rgba(230,240,255,.1)');iceg.addColorStop(.935,'rgba(230,240,255,.05)');
+  iceg.addColorStop(.96,'rgba(230,240,255,.85)');iceg.addColorStop(1,'rgba(230,240,255,1)');
+  dx.fillStyle=iceg;dx.fillRect(0,0,W,H);
+  // Atmosphere haze at equator
+  const hazeg=dx.createLinearGradient(0,H*.35,0,H*.65);
+  hazeg.addColorStop(0,'rgba(120,160,220,0)');hazeg.addColorStop(.5,'rgba(120,160,220,0.04)');hazeg.addColorStop(1,'rgba(120,160,220,0)');
+  dx.fillStyle=hazeg;dx.fillRect(0,0,W,H);
+  const dayTex=new THREE.CanvasTexture(dc);
+
+  // --- Night texture ---
+  const nc=document.createElement('canvas');nc.width=W;nc.height=H;
+  const nx=nc.getContext('2d');
+  nx.fillStyle='#01010a';nx.fillRect(0,0,W,H);
+  // City lights on land areas — reuse same land detection
+  const CITIES=[
+    // [lon, lat, density, radius]
+    [10,51,0.9,120],[2,48,0.85,100],[-74,41,0.95,110],[-87,42,0.85,90],[-118,34,0.8,130],
+    [140,36,0.9,130],[121,31,0.85,110],[116,40,0.9,120],[103,1,0.7,60],[77,28,0.75,80],
+    [28,41,0.75,70],[37,55,0.8,100],[30,-26,0.65,70],[-46,-23,0.75,100],[-58,-34,0.65,80],
+    [151,-33,0.7,80],[144,-37,0.65,70],[18,59,0.7,60],[-0.1,51,0.8,80],[4,52,0.75,70],
+    [139,35,0.85,100],[126,37,0.8,80],[129,35,0.75,70],[88,22,0.7,80],[72,19,0.7,80],
+    [55,25,0.65,60],[46,24,0.6,70],[31,30,0.65,80],[32,0,0.55,70],[-99,19,0.65,80],
+  ];
+  nx.globalCompositeOperation='screen';
+  CITIES.forEach(([lo,la,dens,rad])=>{
+    const px=Math.round((lo+180)/360*W),py=Math.round((90-la)/180*H);
+    const g=nx.createRadialGradient(px,py,0,px,py,rad);
+    g.addColorStop(0,`rgba(255,230,140,${dens})`);g.addColorStop(.3,`rgba(255,200,100,${dens*.6})`);
+    g.addColorStop(.7,`rgba(255,170,60,${dens*.2})`);g.addColorStop(1,'rgba(0,0,0,0)');
+    nx.fillStyle=g;nx.fillRect(px-rad,py-rad,rad*2,rad*2);
+  });
+  // Random small city dots
+  nx.globalCompositeOperation='source-over';
+  _seed=99;
+  for(let i=0;i<800;i++){
+    const px=rng()*W,py=rng()*H;
+    const lat2=90-(py/H)*180,lon2=(px/W)*360-180;
+    if(Math.abs(lat2)>72)continue;
+    // Only on land-ish zones (approximate)
+    let onLand=false;
+    for(const[lc,ltc,lr,ltr]of LAND){let dl=Math.abs(lon2-lc);if(dl>180)dl=360-dl;if(Math.sqrt((dl/lr)**2+((lat2-ltc)/ltr)**2)<1.1){onLand=true;break;}}
+    if(!onLand)continue;
+    const sz=rng()*2+0.5,bright=rng()*.6+.2;
+    nx.fillStyle=`rgba(255,220,120,${bright})`;nx.fillRect(px,py,sz,sz);
+  }
+  const nightTex=new THREE.CanvasTexture(nc);
+
+  // --- Specular (ocean shininess) texture ---
+  const sc=document.createElement('canvas');sc.width=512;sc.height=256;
+  const sx=sc.getContext('2d');const sImg=sx.createImageData(512,256);const sd=sImg.data;
+  for(let py=0;py<256;py++){for(let px=0;px<512;px++){
+    const lon=(px/512)*360-180,lat=90-(py/256)*180;
+    let isLandSpec=false;
+    for(const[lc,ltc,lr,ltr,w]of LAND){let dlon=Math.abs(lon-lc);if(dlon>180)dlon=360-dlon;
+      if(Math.sqrt((dlon/lr)**2+((lat-ltc)/ltr)**2)*w<1.1){isLandSpec=true;break;}}
+    if(lat<-70||lat>82)isLandSpec=true;
+    const v=isLandSpec?0:200;const i=(py*512+px)*4;
+    sd[i]=v;sd[i+1]=v;sd[i+2]=v;sd[i+3]=255;
+  }}
+  sx.putImageData(sImg,0,0);
+  const specTex=new THREE.CanvasTexture(sc);
+
+  // --- Cloud texture ---
+  const cc=document.createElement('canvas');cc.width=1024;cc.height=512;
+  const cx=cc.getContext('2d');cx.fillStyle='#000';cx.fillRect(0,0,1024,512);
+  cx.globalCompositeOperation='screen';_seed=777;
+  // Cloud bands
+  for(let i=0;i<180;i++){
+    const px=rng()*1024,py=rng()*512,rx=40+rng()*120,ry=15+rng()*40,alpha=rng()*.45+.1;
+    const g=cx.createRadialGradient(px,py,0,px,py,Math.max(rx,ry));
+    g.addColorStop(0,`rgba(255,255,255,${alpha})`);g.addColorStop(.5,`rgba(255,255,255,${alpha*.5})`);g.addColorStop(1,'rgba(0,0,0,0)');
+    cx.save();cx.translate(px,py);cx.scale(1,ry/rx);cx.translate(-px,-py);
+    cx.fillStyle=g;cx.fillRect(px-rx,py-rx,rx*2,rx*2);cx.restore();
+  }
+  // Cloud bands near poles and ITCZ
+  [60,256,196,452,30,482].forEach(cy2=>{
+    const g2=cx.createLinearGradient(0,cy2-25,0,cy2+25);
+    g2.addColorStop(0,'rgba(0,0,0,0)');g2.addColorStop(.5,`rgba(255,255,255,0.06)`);g2.addColorStop(1,'rgba(0,0,0,0)');
+    cx.fillStyle=g2;cx.fillRect(0,cy2-25,1024,50);
+  });
+  const cloudTex=new THREE.CanvasTexture(cc);
+
+  return {dayTex,nightTex,specTex,cloudTex};
+}
+const {dayTex,nightTex,specTex,cloudTex}=makeEarthTextures();
+
+
+// Stars
+{const N=8000,pos=new Float32Array(N*3);for(let i=0;i<N;i++){const t=Math.random()*Math.PI*2,p=Math.acos(2*Math.random()-1),r=70+Math.random()*50;pos[i*3]=r*Math.sin(p)*Math.cos(t);pos[i*3+1]=r*Math.sin(p)*Math.sin(t);pos[i*3+2]=r*Math.cos(p);}const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(pos,3));scene.add(new THREE.Points(g,new THREE.PointsMaterial({color:0xffffff,size:.12,sizeAttenuation:true,transparent:true,opacity:.7})));}
+
+// Earth — uses procedural textures directly, no loader needed
+let earth,cloudMesh;
+document.getElementById('lbar').style.width='80%';
+earth=new THREE.Mesh(new THREE.SphereGeometry(R,SEG,SEG),new THREE.ShaderMaterial({uniforms:{tDay:{value:dayTex},tNight:{value:nightTex},tSpec:{value:specTex},uSun:{value:new THREE.Vector3(-1,.25,.65).normalize()}},vertexShader:`varying vec2 vUv;varying vec3 vN;varying vec3 vPos;void main(){vUv=uv;vN=normalize(normalMatrix*normal);vPos=(modelViewMatrix*vec4(position,1.)).xyz;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,fragmentShader:`uniform sampler2D tDay,tNight,tSpec;uniform vec3 uSun;varying vec2 vUv;varying vec3 vN;varying vec3 vPos;void main(){vec3 n=normalize(vN),l=normalize(uSun);float d=dot(n,l);float df=smoothstep(-.18,.28,d);vec3 day=texture2D(tDay,vUv).rgb;vec3 night=texture2D(tNight,vUv).rgb*1.8;vec3 c=mix(night,day,df);c=mix(c,c*(max(0.,d)*.35+.65),df);float sp=texture2D(tSpec,vUv).r;vec3 vd=normalize(-vPos),rf=reflect(-l,n);float s=pow(max(dot(vd,rf),0.),40.);c+=vec3(.55,.6,.7)*s*sp*.45*df;c+=vec3(.02,.02,.04)*(1.-df);gl_FragColor=vec4(c,1.);}`}));
+scene.add(earth);
+cloudMesh=new THREE.Mesh(new THREE.SphereGeometry(R*1.008,SEG,SEG),new THREE.MeshPhongMaterial({map:cloudTex,transparent:true,opacity:.22,depthWrite:false,blending:THREE.AdditiveBlending}));scene.add(cloudMesh);
+// Atmosphere
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(R*1.14,SEG,SEG),new THREE.ShaderMaterial({vertexShader:`varying vec3 vN;void main(){vN=normalize(normalMatrix*normal);gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,fragmentShader:`varying vec3 vN;void main(){float i=pow(.68-dot(vN,vec3(0,0,1)),3.5);gl_FragColor=vec4(.25,.45,.75,i*.55);}`,side:THREE.BackSide,blending:THREE.AdditiveBlending,transparent:true,depthWrite:false})));
+
+// Golden orbital ring (matching original's gimbal ring)
+{
+  const ringMat=new THREE.MeshPhongMaterial({color:0xc8a050,emissive:0x3a2000,shininess:120,transparent:true,opacity:.88,side:THREE.DoubleSide});
+  const ring1=new THREE.Mesh(new THREE.TorusGeometry(R*1.28,0.045,20,160),ringMat);
+  ring1.rotation.x=Math.PI/2;scene.add(ring1);
+  // Inner decorative ring
+  const ring2=new THREE.Mesh(new THREE.TorusGeometry(R*1.22,0.018,12,160),new THREE.MeshPhongMaterial({color:0xa08040,emissive:0x201000,shininess:60,transparent:true,opacity:.5,side:THREE.DoubleSide}));
+  ring2.rotation.x=Math.PI/2;scene.add(ring2);
+}
+
+// Grid — fishing-net style, 5° cells matching the original's density
+const gridG=new THREE.Group();
+const CELL=5; // 5° per cell — matches original screenshot density
+const gMain=new THREE.LineBasicMaterial({color:0xc87832,transparent:true,opacity:.30}); // every 30°
+const gMid =new THREE.LineBasicMaterial({color:0xb06828,transparent:true,opacity:.18}); // every 10°
+const gSub =new THREE.LineBasicMaterial({color:0x905020,transparent:true,opacity:.10}); // every 5°
+// Latitude rings every 5°
+for(let la=-80;la<=80;la+=CELL){
+  const isMaj=(la%30===0),isMid=(la%10===0);
+  const p=(90-la)*Math.PI/180,rr=R*1.002*Math.sin(p),y=R*1.002*Math.cos(p),pts=[];
+  for(let i=0;i<=120;i++){const t=i/120*Math.PI*2;pts.push(new THREE.Vector3(rr*Math.cos(t),y,rr*Math.sin(t)));}
+  gridG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),isMaj?gMain:isMid?gMid:gSub));
+}
+// Longitude meridians every 5°
+for(let lo=0;lo<360;lo+=CELL){
+  const isMaj=(lo%30===0),isMid=(lo%10===0);
+  const t=lo*Math.PI/180,pts=[];
+  for(let i=0;i<=90;i++){const p=i/90*Math.PI;pts.push(new THREE.Vector3(R*1.002*Math.sin(p)*Math.cos(t),R*1.002*Math.cos(p),R*1.002*Math.sin(p)*Math.sin(t)));}
+  gridG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),isMaj?gMain:isMid?gMid:gSub));
+}
+scene.add(gridG);
+
+// Cell assignment — each bird snaps to nearest unoccupied 5° cell center
+// Cell centers sit at ...-12.5,-7.5,-2.5,2.5,7.5... (offset by CELL/2)
+const _usedCells=new Set();
+function assignCell(la,lo){
+  const snap=v=>Math.round((v-CELL/2)/CELL)*CELL+CELL/2;
+  for(let r=0;r<=36;r++){
+    const offsets=[];
+    for(let i=-r;i<=r;i++)for(let j=-r;j<=r;j++)if(Math.abs(i)===r||Math.abs(j)===r)offsets.push([i,j]);
+    offsets.sort((a,b)=>a[0]*a[0]+a[1]*a[1]-b[0]*b[0]-b[1]*b[1]);
+    for(const[di,dj]of offsets){
+      const cLa=snap(la)+di*CELL,cLo=snap(lo)+dj*CELL;
+      if(Math.abs(cLa)>87)continue;
+      const nLo=((cLo%360)+360)%360>180?((cLo%360)+360)%360-360:((cLo%360)+360)%360;
+      const key=`${cLa},${nLo}`;
+      if(!_usedCells.has(key)){_usedCells.add(key);return{la:cLa,lo:nLo};}
+    }
+  }
+  return{la,lo};
+}
+
+// Labels
+const LABELS=[{t:'Russia',la:60,lo:90,s:.5},{t:'China',la:35,lo:103,s:.42},{t:'India',la:22,lo:80,s:.35},{t:'Kazakhstan',la:48,lo:68,s:.28},{t:'Mongolia',la:47,lo:105,s:.25},{t:'Japan',la:36,lo:138,s:.22},{t:'Korea',la:36,lo:128,s:.18},{t:'Thailand',la:14,lo:101,s:.2},{t:'Vietnam',la:16,lo:107,s:.18},{t:'Philippines',la:12,lo:122,s:.2},{t:'Indonesia',la:-3,lo:118,s:.3},{t:'Malaysia',la:3,lo:108,s:.18},{t:'Myanmar',la:20,lo:96,s:.2},{t:'Pakistan',la:30,lo:70,s:.22},{t:'Iran',la:33,lo:53,s:.22},{t:'Iraq',la:33,lo:44,s:.18},{t:'Turkey',la:39,lo:35,s:.22},{t:'Saudi Arabia',la:24,lo:44,s:.25},{t:'Egypt',la:27,lo:30,s:.22},{t:'Libya',la:27,lo:17,s:.2},{t:'Algeria',la:28,lo:2,s:.28},{t:'Morocco',la:32,lo:-6,s:.2},{t:'Nigeria',la:10,lo:8,s:.22},{t:'Sudan',la:15,lo:30,s:.22},{t:'Tanzania',la:-6,lo:35,s:.2},{t:'South Africa',la:-30,lo:25,s:.25},{t:'Madagascar',la:-19,lo:47,s:.2},{t:'Norway',la:64,lo:10,s:.2},{t:'Sweden',la:62,lo:16,s:.2},{t:'Finland',la:63,lo:26,s:.2},{t:'UK',la:54,lo:-2,s:.18},{t:'France',la:47,lo:2,s:.22},{t:'Spain',la:40,lo:-4,s:.22},{t:'Italy',la:42,lo:12,s:.2},{t:'Germany',la:51,lo:10,s:.22},{t:'Poland',la:52,lo:20,s:.2},{t:'Ukraine',la:49,lo:32,s:.22},{t:'Greece',la:39,lo:22,s:.18},{t:'Iceland',la:65,lo:-18,s:.18},{t:'Canada',la:56,lo:-96,s:.5},{t:'United States',la:40,lo:-100,s:.35},{t:'Mexico',la:24,lo:-102,s:.25},{t:'Brazil',la:-10,lo:-52,s:.45},{t:'Argentina',la:-35,lo:-64,s:.28},{t:'Chile',la:-33,lo:-71,s:.2},{t:'Colombia',la:4,lo:-72,s:.2},{t:'Peru',la:-10,lo:-76,s:.22},{t:'Australia',la:-25,lo:135,s:.4},{t:'Greenland',la:72,lo:-42,s:.3},{t:'Sri Lanka',la:7.5,lo:80.5,s:.14},{t:'Nepal',la:28,lo:84,s:.15},{t:'Kenya',la:0,lo:37.5,s:.18},{t:'Angola',la:-12,lo:18,s:.2},{t:'Namibia',la:-22,lo:17,s:.18}];
+const OCEANS=[{t:'ARCTIC OCEAN',la:80,lo:-10,s:.55},{t:'ATLANTIC OCEAN',la:20,lo:-38,s:.55},{t:'PACIFIC OCEAN',la:5,lo:-150,s:.6},{t:'INDIAN OCEAN',la:-20,lo:75,s:.55},{t:'SOUTHERN OCEAN',la:-62,lo:0,s:.5}];
+const CONTS=[{t:'EUROPE',la:52,lo:15,s:.6},{t:'ASIA',la:42,lo:85,s:.7},{t:'AFRICA',la:5,lo:18,s:.6},{t:'NORTH AMERICA',la:48,lo:-105,s:.5},{t:'SOUTH AMERICA',la:-15,lo:-58,s:.5},{t:'AUSTRALIA',la:-28,lo:133,s:.45}];
+const DEGS=[{t:'60°N',la:60,lo:-55,s:.16},{t:'30°N',la:30,lo:-55,s:.16},{t:'60°E',la:-25,lo:60,s:.16},{t:'90°E',la:-25,lo:90,s:.16},{t:'120°E',la:-25,lo:120,s:.16},{t:'150°E',la:-25,lo:150,s:.16},{t:'Tropic of Cancer',la:23.4,lo:-40,s:.14},{t:'Tropic of Capricorn',la:-23.4,lo:-40,s:.14}];
+
+function mkLabel(txt,type){
+  const c=document.createElement('canvas');const sz=type==='ocean'||type==='cont'?512:256;c.width=sz;c.height=sz/4;
+  const x=c.getContext('2d');const fs=type==='ocean'?30:type==='cont'?34:type==='deg'?16:20;
+  x.font=`${type==='cont'?'700':'400'} ${fs}px 'Segoe UI','Noto Sans SC',system-ui,sans-serif`;
+  x.textAlign='center';x.textBaseline='middle';
+  x.fillStyle=type==='ocean'?'rgba(100,120,140,.22)':type==='cont'?'rgba(160,150,130,.16)':type==='deg'?'rgba(140,120,80,.18)':'rgba(190,180,160,.32)';
+  x.fillText(txt,sz/2,sz/8);
+  const t=new THREE.CanvasTexture(c);const m=new THREE.SpriteMaterial({map:t,transparent:true,depthTest:true,depthWrite:false,sizeAttenuation:true});return new THREE.Sprite(m);
+}
+const labelG=new THREE.Group();
+LABELS.forEach(l=>{const sp=mkLabel(l.t,'country');sp.position.copy(ll2v(l.la,l.lo,R+.04));sp.scale.set(l.s*4,l.s,1);labelG.add(sp);});
+OCEANS.forEach(l=>{const sp=mkLabel(l.t,'ocean');sp.position.copy(ll2v(l.la,l.lo,R+.05));sp.scale.set(l.s*4,l.s,1);labelG.add(sp);});
+CONTS.forEach(l=>{const sp=mkLabel(l.t,'cont');sp.position.copy(ll2v(l.la,l.lo,R+.06));sp.scale.set(l.s*4,l.s,1);labelG.add(sp);});
+DEGS.forEach(l=>{const sp=mkLabel(l.t,'deg');sp.position.copy(ll2v(l.la,l.lo,R+.03));sp.scale.set(l.s*4,l.s,1);labelG.add(sp);});
+scene.add(labelG);
+
+// Birds
+const B=[
+{z:'中國畫眉',e:'Chinese Hwamei',la:28,lo:112,d:'鸟界"歌神"，能模仿几十种鸟叫',s:'Garrulax canorus',c:'#b08040'},{z:'朱鹮',e:'Crested Ibis',la:33.3,lo:107.5,d:'曾仅剩7只，被称为"东方宝石"',s:'Nipponia nippon',c:'#f0a0a0'},{z:'丹顶鹤',e:'Red-crowned Crane',la:46,lo:132,d:'东亚仙鹤，寿命可达60年',s:'Grus japonensis',c:'#e8e8e8'},{z:'绿孔雀',e:'Green Peafowl',la:22,lo:100,d:'比蓝孔雀更稀有',s:'Pavo muticus',c:'#40a060'},{z:'白腹锦鸡',e:"Lady Amherst's Pheasant",la:27,lo:100,d:'中国特有种，雄鸟极其华丽',s:'Chrysolophus amherstiae',c:'#e0c080'},{z:'黑颈鹤',e:'Black-necked Crane',la:32,lo:92,d:'世界唯一高原繁殖的鹤',s:'Grus nigricollis',c:'#707070'},{z:'褐马鸡',e:'Brown Eared Pheasant',la:38,lo:112,d:'中国特有，性格刚烈勇猛',s:'Crossoptilon mantchuricum',c:'#705040'},{z:'日本绿雉',e:'Green Pheasant',la:36,lo:138,d:'日本国鸟',s:'Phasianus versicolor',c:'#308050'},{z:'蓝喉蜂虎',e:'Blue-throated Bee-eater',la:22.5,lo:108,d:'空中捕蜜蜂的彩色猎手',s:'Merops viridis',c:'#30a0c0'},{z:'棕尾虹雉',e:'Himalayan Monal',la:28,lo:85,d:'尼泊尔国鸟，九色闪耀如虹',s:'Lophophorus impejanus',c:'#6040c0'},{z:'戴胜',e:'Eurasian Hoopoe',la:35,lo:70,d:'以色列国鸟，头冠如扇',s:'Upupa epops',c:'#d09060'},{z:'印度孔雀',e:'Indian Peafowl',la:22,lo:78,d:'印度国鸟，开屏经典',s:'Pavo cristatus',c:'#2060c0'},{z:'翠鸟',e:'Common Kingfisher',la:30,lo:115,d:'蓝色闪电，颜色来自光折射',s:'Alcedo atthis',c:'#0090d0'},{z:'红腹锦鸡',e:'Golden Pheasant',la:32,lo:108,d:'金红羽毛曾是皇家象征',s:'Chrysolophus pictus',c:'#e06020'},{z:'长尾山雀',e:'Long-tailed Tit',la:36,lo:128,d:'"雪の妖精"，圆滚滚极可爱',s:'Aegithalos caudatus',c:'#f0d0e0'},{z:'红嘴蓝鹊',e:'Red-billed Blue Magpie',la:28,lo:86,d:'飞行如蓝色彩带',s:'Urocissa erythroryncha',c:'#4070d0'},{z:'暗绿绣眼鸟',e:'Japanese White-eye',la:25,lo:121,d:'眼周白环如戴眼镜',s:'Zosterops japonicus',c:'#80c040'},{z:'白鹡鸰',e:'White Wagtail',la:42,lo:105,d:'尾巴不停上下摆动',s:'Motacilla alba',c:'#c0c0c0'},{z:'红腹角雉',e:'Satyr Tragopan',la:29,lo:95,d:'求偶展开蓝色肉裙',s:'Tragopan satyra',c:'#c04020'},{z:'台湾蓝鹊',e:'Taiwan Blue Magpie',la:24,lo:121,d:'台湾特有种，非官方国鸟',s:'Urocissa caerulea',c:'#3050c0'},{z:'大鸨',e:'Great Bustard',la:48,lo:68,d:'最重飞行鸟之一，18公斤',s:'Otis tarda',c:'#a08060'},{z:'赤颈鹤',e:'Sarus Crane',la:26,lo:81,d:'世界最高飞鸟1.8米',s:'Antigone antigone',c:'#d0d0d0'},{z:'蓝翡翠',e:'Black-capped Kingfisher',la:18,lo:103,d:'头顶黑色的翡翠猎手',s:'Halcyon pileata',c:'#2080b0'},
+// Europe
+{z:'欧洲蜂虎',e:'European Bee-eater',la:40,lo:2,d:'吃蜜蜂前先拍打去毒刺',s:'Merops apiaster',c:'#e0a030'},{z:'欧亚鸲',e:'European Robin',la:53,lo:-1,d:'英国非官方国鸟',s:'Erithacus rubecula',c:'#d06030'},{z:'苍鹭',e:'Grey Heron',la:52,lo:5,d:'站姿如雕塑',s:'Ardea cinerea',c:'#909090'},{z:'大山雀',e:'Great Tit',la:48,lo:11,d:'能学会开牛奶瓶',s:'Parus major',c:'#c0d030'},{z:'白鹳',e:'White Stork',la:50,lo:20,d:'送子鸟原型',s:'Ciconia ciconia',c:'#f0f0f0'},{z:'北方塘鹅',e:'Northern Gannet',la:58,lo:-5,d:'30米俯冲时速100km',s:'Morus bassanus',c:'#f0f0d0'},{z:'红隼',e:'Common Kestrel',la:48,lo:2,d:'空中悬停如直升机',s:'Falco tinnunculus',c:'#b07040'},{z:'夜莺',e:'Common Nightingale',la:42,lo:12,d:'200种不同旋律',s:'Luscinia megarhynchos',c:'#907050'},{z:'岩雷鸟',e:'Rock Ptarmigan',la:65,lo:-18,d:'冬天变全白',s:'Lagopus muta',c:'#d0d0d0'},{z:'髯鹫',e:'Bearded Vulture',la:46,lo:7,d:'扔骨头摔碎吃骨髓',s:'Gypaetus barbatus',c:'#c08040'},{z:'游隼',e:'Peregrine Falcon',la:51,lo:-.1,d:'最快动物时速390km',s:'Falco peregrinus',c:'#506080'},{z:'家燕',e:'Barn Swallow',la:55,lo:37,d:'尾巴越长越受欢迎',s:'Hirundo rustica',c:'#2040a0'},{z:'渡鸦',e:'Common Raven',la:55,lo:-6,d:'伦敦塔守护者',s:'Corvus corax',c:'#1a1a2a'},{z:'金雕',e:'Golden Eagle',la:57,lo:-5,d:'苏格兰象征',s:'Aquila chrysaetos',c:'#806020'},{z:'椋鸟',e:'Common Starling',la:52,lo:13,d:'万鸟齐飞"椋鸟风暴"',s:'Sturnus vulgaris',c:'#303040'},{z:'大天鹅',e:'Whooper Swan',la:64,lo:-20,d:'终身配对',s:'Cygnus cygnus',c:'#f5f5f0'},{z:'蓝喉歌鸲',e:'Bluethroat',la:62,lo:15,d:'喉部宝石蓝斑',s:'Luscinia svecica',c:'#2060b0'},
+// Africa
+{z:'鲸头鹳',e:'Shoebill',la:2,lo:32,d:'鞋形喙可咬住鳄鱼',s:'Balaeniceps rex',c:'#708090'},{z:'灰冠鹤',e:'Grey Crowned Crane',la:-1,lo:36,d:'乌干达国鸟',s:'Balearica regulorum',c:'#b0b0b0'},{z:'紫胸佛法僧',e:'Lilac-breasted Roller',la:-4,lo:35,d:'空中翻跟斗求偶',s:'Coracias caudatus',c:'#a060c0'},{z:'非洲鱼鹰',e:'African Fish Eagle',la:-6,lo:30,d:'非洲荒野标志性声音',s:'Haliaeetus vocifer',c:'#604020'},{z:'黄嘴犀鸟',e:'Southern Yellow-billed Hornbill',la:-20,lo:25,d:'狮子王沙祖原型',s:'Tockus leucomelas',c:'#d0c020'},{z:'鸵鸟',e:'Common Ostrich',la:-25,lo:28,d:'世界最大鸟时速70km',s:'Struthio camelus',c:'#504030'},{z:'火烈鸟',e:'Greater Flamingo',la:-2,lo:36.1,d:'颜色来自类胡萝卜素',s:'Phoenicopterus roseus',c:'#f06080'},{z:'非洲灰鹦鹉',e:'African Grey Parrot',la:5,lo:10,d:'最聪明鹦鹉智商如5岁儿童',s:'Psittacus erithacus',c:'#909090'},{z:'秘书鸟',e:'Secretary Bird',la:-2,lo:37,d:'用脚踩死毒蛇',s:'Sagittarius serpentarius',c:'#c0c0c0'},{z:'织巢鸟',e:'Village Weaver',la:7,lo:3,d:'编织精巧巢穴',s:'Ploceus cucullatus',c:'#d0c020'},{z:'冕鹫',e:'Crowned Eagle',la:-3,lo:34,d:'非洲最强森林猛禽',s:'Stephanoaetus coronatus',c:'#504030'},{z:'灰冠铁爪鹀',e:'Cape Sugarbird',la:-34,lo:18.5,d:'与帝王花共同进化',s:'Promerops cafer',c:'#806040'},
+// N.America
+{z:'白头海雕',e:'Bald Eagle',la:48,lo:-122,d:'美国国鸟翼展2.3米',s:'Haliaeetus leucocephalus',c:'#604020'},{z:'北美红雀',e:'Northern Cardinal',la:38,lo:-85,d:'全身鲜红如火',s:'Cardinalis cardinalis',c:'#d02020'},{z:'东蓝鸟',e:'Eastern Bluebird',la:40,lo:-78,d:'北美幸福象征',s:'Sialia sialis',c:'#3070d0'},{z:'大角鸮',e:'Great Horned Owl',la:45,lo:-100,d:'握力300磅',s:'Bubo virginianus',c:'#806040'},{z:'红喉蜂鸟',e:'Ruby-throated Hummingbird',la:35,lo:-82,d:'每秒扇翅80次',s:'Archilochus colubris',c:'#40a040'},{z:'加州秃鹫',e:'California Condor',la:35,lo:-119,d:'翼展3米仅剩22只后恢复',s:'Gymnogyps californianus',c:'#303030'},{z:'旅鸫',e:'American Robin',la:42,lo:-90,d:'北美春天使者',s:'Turdus migratorius',c:'#c05030'},{z:'蓝鸦',e:'Blue Jay',la:43,lo:-72,d:'模仿鹰叫吓跑同伴',s:'Cyanocitta cristata',c:'#3060e0'},{z:'大蓝鹭',e:'Great Blue Heron',la:44,lo:-80,d:'北美最大鹭1.3米',s:'Ardea herodias',c:'#607090'},{z:'雪鸮',e:'Snowy Owl',la:62,lo:-95,d:'哈利波特海德薇',s:'Bubo scandiacus',c:'#f0f0f0'},{z:'冠蓝鸦',e:"Steller's Jay",la:47,lo:-121,d:'头顶冠羽帅气',s:'Cyanocitta stelleri',c:'#2050a0'},{z:'红头啄木鸟',e:'Red-headed Woodpecker',la:40,lo:-88,d:'整个头部鲜红',s:'Melanerpes erythrocephalus',c:'#c02020'},
+// S.America
+{z:'金刚鹦鹉',e:'Scarlet Macaw',la:-3,lo:-60,d:'亚马逊彩虹使者寿命80年',s:'Ara macao',c:'#e02020'},{z:'巨嘴鸟',e:'Toco Toucan',la:-15,lo:-50,d:'巨喙轻如泡沫',s:'Ramphastos toco',c:'#e08020'},{z:'安第斯神鹰',e:'Andean Condor',la:-15,lo:-72,d:'翼展3.3米南美国鸟',s:'Vultur gryphus',c:'#303030'},{z:'动冠伞鸟',e:'Andean Cock-of-the-rock',la:-10,lo:-76,d:'秘鲁国鸟求偶舞壮观',s:'Rupicola peruvianus',c:'#e05010'},{z:'格查尔鸟',e:'Resplendent Quetzal',la:15,lo:-90,d:'危地马拉国鸟尾如翡翠',s:'Pharomachrus mocinno',c:'#20a040'},{z:'美洲红鹮',e:'Scarlet Ibis',la:10,lo:-61,d:'全身猩红',s:'Eudocimus ruber',c:'#e02010'},{z:'蓝黄金刚鹦鹉',e:'Blue-and-yellow Macaw',la:-5,lo:-55,d:'蓝黄配色极醒目',s:'Ara ararauna',c:'#3070c0'},
+// Oceania
+{z:'笑翠鸟',e:'Laughing Kookaburra',la:-33,lo:151,d:'叫声像人类大笑',s:'Dacelo novaeguineae',c:'#907060'},{z:'鸸鹋',e:'Emu',la:-25,lo:135,d:'世界第二大鸟',s:'Dromaius novaehollandiae',c:'#504030'},{z:'极乐鸟',e:'Greater Bird-of-paradise',la:-5,lo:140,d:'巴布亚新几内亚国鸟',s:'Paradisaea apoda',c:'#c09020'},{z:'琴鸟',e:'Superb Lyrebird',la:-37,lo:148,d:'能模仿电锯声',s:'Menura novaehollandiae',c:'#806050'},{z:'几维鸟',e:'North Island Brown Kiwi',la:-38,lo:176,d:'新西兰国鸟无翅膀',s:'Apteryx mantelli',c:'#604030'},{z:'彩虹吸蜜鹦鹉',e:'Rainbow Lorikeet',la:-28,lo:153,d:'舌头有刷状结构吸花蜜',s:'Trichoglossus moluccanus',c:'#30a040'},{z:'黑天鹅',e:'Black Swan',la:-36,lo:145,d:'颠覆天鹅必须白色的认知',s:'Cygnus atratus',c:'#202020'},
+// Arctic & Antarctic
+{z:'北极燕鸥',e:'Arctic Tern',la:66,lo:-20,d:'年飞7万公里迁徙最长',s:'Sterna paradisaea',c:'#e0e0e0'},{z:'海鹦',e:'Atlantic Puffin',la:63,lo:-22,d:'海上小丑繁殖季喙变彩',s:'Fratercula arctica',c:'#f0f0f0'},{z:'北极贼鸥',e:'Arctic Skua',la:70,lo:10,d:'北极海盗鸟',s:'Stercorarius parasiticus',c:'#605040'},{z:'帝企鹅',e:'Emperor Penguin',la:-72,lo:-40,d:'零下60度孵蛋父爱无敌',s:'Aptenodytes forsteri',c:'#e0d060'},{z:'漂泊信天翁',e:'Wandering Albatross',la:-55,lo:-30,d:'翼展3.7米最宽',s:'Diomedea exulans',c:'#f0f0f0'},{z:'阿德利企鹅',e:'Adélie Penguin',la:-70,lo:170,d:'用石子求婚',s:'Pygoscelis adeliae',c:'#2a2a2a'},{z:'雪鸮',e:'Snowy Owl',la:71,lo:25,d:'北极苔原白色幽灵',s:'Bubo scandiacus',c:'#f8f8f8'},{z:'王企鹅',e:'King Penguin',la:-54,lo:-37,d:'华丽橙色耳斑',s:'Aptenodytes patagonicus',c:'#e0a030'},{z:'普通海鸠',e:'Common Murre',la:60,lo:-40,d:'梨形蛋不会从悬崖滚落',s:'Uria aalge',c:'#303030'},{z:'喜鹊',e:'Eurasian Magpie',la:40,lo:116,d:'能通过镜子测试有自我意识',s:'Pica pica',c:'#202020'},
+// Additional Asia
+{z:'白腹蓝鹟',e:'Blue-and-white Flycatcher',la:35,lo:137,d:'日本最美小鸟之一',s:'Cyanoptila cyanomelana',c:'#3060c0'},{z:'蓝翅八色鸫',e:'Blue-winged Pitta',la:15,lo:100,d:'雨季前穿越半岛',s:'Pitta moluccensis',c:'#2080a0'},{z:'红胸角雉',e:'Blyth\'s Tragopan',la:27,lo:92,d:'求偶展艳蓝肉裙',s:'Tragopan blythii',c:'#c03030'},{z:'花冠皱盔犀鸟',e:'Wreathed Hornbill',la:24,lo:94,d:'雌鸟孵蛋时被泥封在树洞',s:'Rhyticeros undulatus',c:'#e0c020'},{z:'绿鹦嘴鹎',e:'Green-billed Malkoha',la:12,lo:101,d:'长尾不停摇摆',s:'Phaenicophaeus tristis',c:'#508030'},{z:'栗鸢',e:'Brahminy Kite',la:20,lo:90,d:'印度教圣鸟毗湿奴坐骑',s:'Haliastur indus',c:'#c04010'},{z:'紫水鸡',e:'Purple Swamphen',la:18,lo:80,d:'脚大如球拍',s:'Porphyrio porphyrio',c:'#4040d0'},{z:'白腰叉尾海燕',e:'Swinhoe\'s Storm Petrel',la:32,lo:128,d:'海面上最小的鸟类之一',s:'Hydrobates monorhis',c:'#404040'},{z:'黑喉噪鹛',e:'Black-throated Laughingthrush',la:29,lo:102,d:'竹林中的音乐家',s:'Pterorhinus chinensis',c:'#806040'},{z:'橙腹叶鹎',e:'Orange-bellied Leafbird',la:10,lo:99,d:'绿叶间一点橙火',s:'Chloropsis hardwickii',c:'#30a030'},{z:'白眉鸭',e:'Garganey',la:55,lo:80,d:'长途迁徙从西伯利亚到非洲',s:'Spatula querquedula',c:'#8090a0'},{z:'灰头麦鸡',e:'Grey-headed Lapwing',la:30,lo:120,d:'警戒鸟，护巢勇猛',s:'Vanellus cinereus',c:'#909060'},{z:'棕背田鸡',e:'Ruddy-breasted Crake',la:25,lo:115,d:'水边隐秘的小精灵',s:'Zapornia fusca',c:'#c06040'},{z:'蓝须夜蜂虎',e:'Blue-bearded Bee-eater',la:14,lo:102,d:'最大的蜂虎',s:'Nyctyornis athertoni',c:'#20a060'},{z:'冠鱼狗',e:'Crested Kingfisher',la:30,lo:78,d:'世界最大翠鸟',s:'Megaceryle lugubris',c:'#506080'},
+// Additional Europe
+{z:'大鸨',e:'Great Bustard',la:41,lo:0,d:'欧洲最重飞鸟可达18公斤',s:'Otis tarda',c:'#c0a060'},{z:'欧洲翠鸟',e:'Common Kingfisher',la:51,lo:0,d:'蓝橙闪光如飞行宝石',s:'Alcedo atthis',c:'#0090d0'},{z:'欧歌鸫',e:'Song Thrush',la:52,lo:1,d:'用石头砸开蜗牛壳',s:'Turdus philomelos',c:'#906040'},{z:'白腹毛脚燕',e:'House Martin',la:48,lo:9,d:'每年往返非洲',s:'Delichon urbicum',c:'#303060'},{z:'欧亚树雀',e:'Eurasian Tree Sparrow',la:50,lo:14,d:'城市里最常见的小鸟',s:'Passer montanus',c:'#a07040'},{z:'绿啄木鸟',e:'European Green Woodpecker',la:47,lo:3,d:'用舌头钩出蚂蚁',s:'Picus viridis',c:'#50a030'},{z:'反嘴鹬',e:'Pied Avocet',la:53,lo:8,d:'弯嘴在水中左右扫食',s:'Recurvirostra avosetta',c:'#f0f0f0'},{z:'鸬鹚',e:'Great Cormorant',la:52,lo:4,d:'潜水60秒抓鱼',s:'Phalacrocorax carbo',c:'#202020'},{z:'白额雁',e:'Greater White-fronted Goose',la:53,lo:6,d:'额头白斑识别',s:'Anser albifrons',c:'#808060'},{z:'黑头蜡嘴雀',e:'Hawfinch',la:51,lo:9,d:'喙力可咬碎樱桃核',s:'Coccothraustes coccothraustes',c:'#c08040'},{z:'流苏鹬',e:'Ruff',la:60,lo:25,d:'雄鸟繁殖羽各不相同',s:'Calidris pugnax',c:'#c07050'},{z:'草地鹨',e:'Meadow Pipit',la:55,lo:2,d:'高飞后鸣叫降落',s:'Anthus pratensis',c:'#909060'},{z:'欧石鸻',e:'Eurasian Stone-curlew',la:46,lo:2,d:'夜行性黄眼大蛙眼',s:'Burhinus oedicnemus',c:'#c0a060'},
+// Additional Africa
+{z:'非洲蜂鸟',e:'Malachite Sunbird',la:-30,lo:29,d:'南非最华丽的太阳鸟',s:'Nectarinia famosa',c:'#20c040'},{z:'角雕',e:'Martial Eagle',la:-5,lo:28,d:'非洲最大猛禽可杀羚羊',s:'Polemaetus bellicosus',c:'#604020'},{z:'非洲戴胜',e:'African Hoopoe',la:3,lo:30,d:'头冠如扇极具辨识度',s:'Upupa africana',c:'#d09060'},{z:'黑脸织雀',e:'Southern Masked Weaver',la:-26,lo:28,d:'编织精美球形巢',s:'Ploceus velatus',c:'#e0c020'},{z:'非洲琴尾风鸟',e:'Long-tailed Widowbird',la:-27,lo:29,d:'雄鸟尾羽长达50厘米',s:'Euplectes progne',c:'#202020'},{z:'非洲鱼狗',e:'Giant Kingfisher',la:-5,lo:35,d:'非洲最大翠鸟',s:'Megaceryle maxima',c:'#506080'},{z:'双角犀鸟',e:'Silvery-cheeked Hornbill',la:6,lo:37,d:'埃塞俄比亚山地特有',s:'Bycanistes brevis',c:'#303030'},{z:'草原百灵',e:'Rufous-naped Lark',la:-2,lo:37,d:'空中鸣唱振翅停悬',s:'Mirafra africana',c:'#c09060'},{z:'埃及鹅',e:'Egyptian Goose',la:10,lo:30,d:'古埃及圣鸟',s:'Alopochen aegyptiaca',c:'#a07040'},{z:'紫胸太阳鸟',e:'Purple-breasted Sunbird',la:-3,lo:36,d:'雄鸟胸部紫色金属光',s:'Nectarinia purpureiventris',c:'#6020a0'},
+// Additional N.America
+{z:'火鸡',e:'Wild Turkey',la:36,lo:-84,d:'本杰明·富兰克林的最爱候选国鸟',s:'Meleagris gallopavo',c:'#604020'},{z:'橙腹拟鹂',e:'Baltimore Oriole',la:39,lo:-76,d:'像橙子闪耀在树梢',s:'Icterus galbula',c:'#e06010'},{z:'美洲隼',e:'American Kestrel',la:38,lo:-97,d:'最小的北美猎鹰',s:'Falco sparverius',c:'#c07040'},{z:'紫崖燕',e:'Purple Martin',la:35,lo:-90,d:'北美最大燕子',s:'Progne subis',c:'#304080'},{z:'叉尾王霸鹟',e:'Scissor-tailed Flycatcher',la:34,lo:-98,d:'尾长超过身体',s:'Tyrannus forficatus',c:'#d0c0d0'},{z:'黑白林莺',e:'Black-and-white Warbler',la:42,lo:-74,d:'像啄木鸟沿树干爬行',s:'Mniotilta varia',c:'#202020'},{z:'冕啄木鸟',e:'Pileated Woodpecker',la:45,lo:-88,d:'北美最大啄木鸟翼展76cm',s:'Dryocopus pileatus',c:'#c02020'},{z:'沙丘鹤',e:'Sandhill Crane',la:42,lo:-86,d:'鸣声传播数公里',s:'Antigone canadensis',c:'#d0d0c0'},{z:'黄嘴鹊鸭',e:'Bufflehead',la:50,lo:-100,d:'最小的潜水鸭',s:'Bucephala albeola',c:'#f0f0f0'},{z:'北美黑啄木鸟',e:'Lewis\'s Woodpecker',la:44,lo:-118,d:'玫瑰红腹部独一无二',s:'Melanerpes lewis',c:'#205040'},{z:'铁爪鹀',e:'Snow Bunting',la:68,lo:-85,d:'繁殖于北极苔原',s:'Plectrophenax nivalis',c:'#f0f0e0'},{z:'北极海鸥',e:'Glaucous Gull',la:70,lo:-65,d:'全身白色的北极海鸥',s:'Larus hyperboreus',c:'#f0f0f0'},
+// Additional S.America
+{z:'紫蓝金刚鹦鹉',e:'Hyacinth Macaw',la:-16,lo:-57,d:'世界最大鹦鹉翼展1.2米',s:'Anodorhynchus hyacinthinus',c:'#2040e0'},{z:'棕榈鹦鹉',e:'Palm Cockatoo',la:-8,lo:141,d:'用树枝敲打树干求偶',s:'Probosciger aterrimus',c:'#202020'},{z:'角雕',e:'Harpy Eagle',la:5,lo:-60,d:'亚马逊最强猛禽爪如熊掌',s:'Harpia harpyja',c:'#808090'},{z:'棕胸鹟鸫',e:'Rufous-bellied Thrush',la:-22,lo:-45,d:'巴西国鸟',s:'Turdus rufiventris',c:'#c07040'},{z:'南美彩鹮',e:'Green Ibis',la:8,lo:-63,d:'热带雨林中的绿色使者',s:'Mesembrinibis cayennensis',c:'#304030'},{z:'大角冠雉',e:'Great Curassow',la:15,lo:-87,d:'中美洲森林巨鸟',s:'Crax rubra',c:'#202020'},{z:'红腿蜜鴷',e:'Red-footed Booby',la:18,lo:-67,d:'脚红如赤足仙',s:'Sula sula',c:'#f0f0f0'},
+// Additional Oceania
+{z:'椰子蟹猎手-短尾信天翁',e:'Short-tailed Albatross',la:32,lo:143,d:'北太平洋最大海鸟',s:'Phoebastria albatrus',c:'#f0f0d0'},{z:'新西兰知更鸟',e:'New Zealand Robin',la:-44,lo:170,d:'好奇心极强会跟着人走',s:'Petroica australis',c:'#303030'},{z:'卡卡鹦鹉',e:'Kaka',la:-41,lo:174,d:'新西兰森林鹦鹉',s:'Nestor meridionalis',c:'#806030'},{z:'棕胸鹃鸠',e:'Brown Cuckoo-Dove',la:-20,lo:148,d:'澳洲雨林常见',s:'Macropygia phasianella',c:'#c08060'},{z:'叉扇尾蜂鸟',e:'Marvelous Spatuletail',la:-6,lo:-77,d:'秘鲁特有最奇异蜂鸟',s:'Loddigesia mirabilis',c:'#a020c0'},
+// ── EXPANDED ASIA ─────────────────────────────────────────────────────────────
+{z:'东方白鹳',e:'Oriental Stork',la:50,lo:130,d:'比白鹳更稀有的远东种',s:'Ciconia boyciana',c:'#f0f0f0'},{z:'黄腹角雉',e:'Cabot\'s Tragopan',la:27,lo:117,d:'中国东南山地特有',s:'Tragopan caboti',c:'#c05020'},{z:'白冠长尾雉',e:'Reeves\'s Pheasant',la:32,lo:114,d:'尾长达2.4米',s:'Syrmaticus reevesii',c:'#c0a040'},{z:'黑长尾雉',e:'Mikado Pheasant',la:24,lo:121,d:'台湾特有珍贵雉类',s:'Syrmaticus mikado',c:'#303050'},{z:'蓝马鸡',e:'Blue Eared Pheasant',la:36,lo:102,d:'全身蓝灰如月光',s:'Crossoptilon auritum',c:'#5080a0'},{z:'白马鸡',e:'White Eared Pheasant',la:30,lo:100,d:'西藏珍稀特有种',s:'Crossoptilon crossoptilon',c:'#e0e0e0'},{z:'黄嘴潜鸟',e:'Yellow-billed Loon',la:70,lo:130,d:'北极圈最美潜鸟',s:'Gavia adamsii',c:'#404040'},{z:'黑脸琵鹭',e:'Black-faced Spoonbill',la:38,lo:118,d:'全球不足7000只',s:'Platalea minor',c:'#f0f0f0'},{z:'中华秋沙鸭',e:'Scaly-sided Merganser',la:44,lo:130,d:'鳞纹如鱼中国特有',s:'Mergus squamatus',c:'#204060'},{z:'绿尾虹雉',e:'Chinese Monal',la:30,lo:102,d:'四川特有彩虹光泽',s:'Lophophorus lhuysii',c:'#4060c0'},{z:'勺嘴鹬',e:'Spoon-billed Sandpiper',la:65,lo:170,d:'独特勺形嘴全球仅500只',s:'Calidris pygmaea',c:'#c09070'},{z:'蓑羽鹤',e:'Demoiselle Crane',la:48,lo:95,d:'最小的鹤迁越喜马拉雅',s:'Grus virgo',c:'#b0b0c0'},{z:'白枕鹤',e:'White-naped Crane',la:45,lo:122,d:'东亚候鸟颈部白色',s:'Antigone vipio',c:'#d0d0c0'},{z:'灰鹤',e:'Common Crane',la:55,lo:85,d:'迁徙时V字编队飞行',s:'Grus grus',c:'#909080'},{z:'鸳鸯',e:'Mandarin Duck',la:42,lo:128,d:'爱情忠贞象征',s:'Aix galericulata',c:'#e07030'},{z:'东方草鸮',e:'Eastern Grass Owl',la:24,lo:115,d:'心形脸隐于草丛',s:'Tyto longimembris',c:'#c09060'},{z:'大紫胸鹦鹉',e:'Lord Derby\'s Parakeet',la:27,lo:98,d:'喜马拉雅最大鹦鹉',s:'Psittacula derbiana',c:'#40a060'},{z:'棕颈钩嘴鹛',e:'Streak-breasted Scimitar Babbler',la:23,lo:98,d:'弯刀嘴穿行竹林',s:'Pomatorhinus ruficollis',c:'#806040'},{z:'细纹苇莺',e:'Streaked Reed Warbler',la:44,lo:120,d:'芦苇丛中的歌手',s:'Acrocephalus sorghophilus',c:'#c0a060'},{z:'蓝胸佛法僧',e:'Indian Roller',la:20,lo:77,d:'飞行展示蓝色翅膀',s:'Coracias benghalensis',c:'#3080c0'},{z:'棕背伯劳',e:'Long-tailed Shrike',la:32,lo:106,d:'雀中猛禽用刺串猎物',s:'Lanius schach',c:'#806040'},{z:'白胸苦恶鸟',e:'White-breasted Waterhen',la:15,lo:108,d:'热带湿地常见水鸟',s:'Amaurornis phoenicurus',c:'#404040'},{z:'普通鵟',e:'Common Buzzard',la:50,lo:78,d:'欧亚最常见猛禽',s:'Buteo buteo',c:'#805030'},{z:'大斑啄木鸟',e:'Great Spotted Woodpecker',la:56,lo:88,d:'西伯利亚森林木工',s:'Dendrocopos major',c:'#c02020'},{z:'北鹨',e:'Richard\'s Pipit',la:50,lo:110,d:'草原上鸣叫最响亮',s:'Anthus richardi',c:'#c0a060'},{z:'毛腿沙鸡',e:'Pallas\'s Sandgrouse',la:45,lo:75,d:'千里寻水腹羽吸水',s:'Syrrhaptes paradoxus',c:'#c09050'},{z:'蒙古百灵',e:'Mongolian Lark',la:47,lo:108,d:'草原天籁百转千回',s:'Melanocorypha mongolica',c:'#c0a050'},{z:'黑百灵',e:'Black Lark',la:50,lo:62,d:'哈萨克草原黑色精灵',s:'Melanocorypha yeltoniensis',c:'#202020'},{z:'白头鹤',e:'Hooded Crane',la:52,lo:112,d:'全球仅15000只',s:'Grus monacha',c:'#d0d0c0'},{z:'鸿雁',e:'Swan Goose',la:50,lo:118,d:'家鹅祖先额头鼓包',s:'Anser cygnoides',c:'#c0a060'},{z:'小天鹅',e:'Tundra Swan',la:68,lo:70,d:'比大天鹅小颈较短',s:'Cygnus columbianus',c:'#f0f0f0'},{z:'棕尾鵟',e:'Long-legged Buzzard',la:38,lo:58,d:'中亚荒漠猛禽',s:'Buteo rufinus',c:'#c07030'},{z:'草原雕',e:'Steppe Eagle',la:42,lo:62,d:'中亚草原最常见雕',s:'Aquila nipalensis',c:'#604020'},{z:'白尾海雕',e:'White-tailed Eagle',la:55,lo:95,d:'翼展2.5米欧洲最大雕',s:'Haliaeetus albicilla',c:'#604020'},{z:'乌雕',e:'Greater Spotted Eagle',la:56,lo:106,d:'稀有深棕色大型雕',s:'Clanga clanga',c:'#403020'},{z:'秃鹫',e:'Cinereous Vulture',la:37,lo:88,d:'亚洲最大猛禽翼展3米',s:'Aegypius monachus',c:'#302010'},{z:'胡兀鹫',e:'Bearded Vulture',la:33,lo:75,d:'骨头是主食用胃酸消化',s:'Gypaetus barbatus',c:'#c08030'},{z:'高山兀鹫',e:'Himalayan Griffon',la:30,lo:88,d:'海拔最高食腐鸟',s:'Gyps himalayensis',c:'#c0a060'},{z:'猎隼',e:'Saker Falcon',la:45,lo:65,d:'中亚猎人伙伴千年传统',s:'Falco cherrug',c:'#c09050'},{z:'小隼',e:'Collared Falconet',la:24,lo:102,d:'世界最小猛禽之一',s:'Microhierax caerulescens',c:'#204040'},{z:'红脚隼',e:'Amur Falcon',la:48,lo:122,d:'年迁徙22000公里',s:'Falco amurensis',c:'#606070'},{z:'黑翅鸢',e:'Black-winged Kite',la:25,lo:110,d:'红眼白身空中悬停',s:'Elanus caeruleus',c:'#d0d0e0'},{z:'蛇雕',e:'Crested Serpent Eagle',la:22,lo:110,d:'专吃蛇的雕',s:'Spilornis cheela',c:'#604020'},{z:'林雕',e:'Mountain Hawk-Eagle',la:26,lo:100,d:'东南亚山地强悍猛禽',s:'Nisaetus nipalensis',c:'#604030'},{z:'褐渔鸮',e:'Brown Fish Owl',la:28,lo:80,d:'溪边守望夜间捕鱼',s:'Ketupa zeylonensis',c:'#806040'},{z:'领角鸮',e:'Collared Scops Owl',la:25,lo:108,d:'叫声哦哦一整夜',s:'Otus lettia',c:'#806040'},{z:'仙八色鸫',e:'Fairy Pitta',la:25,lo:122,d:'八种颜色如画',s:'Pitta nympha',c:'#2080a0'},{z:'蓝八色鸫',e:'Blue Pitta',la:20,lo:102,d:'雨林宝石蓝色精灵',s:'Hydrornis cyaneus',c:'#3060a0'},{z:'绿胸八色鸫',e:'Hooded Pitta',la:10,lo:106,d:'绿胸红腹如圣诞装',s:'Pitta sordida',c:'#30a030'},{z:'马来犀鸟',e:'Rhinoceros Hornbill',la:3,lo:113,d:'马来西亚国鸟角如犀牛',s:'Buceros rhinoceros',c:'#e0a020'},{z:'双角犀鸟',e:'Great Hornbill',la:15,lo:100,d:'用泥封巢妻儿在内',s:'Buceros bicornis',c:'#e0c020'},{z:'凤头树燕',e:'Crested Treeswift',la:5,lo:116,d:'世界上唯一有冠雨燕',s:'Hemiprocne coronata',c:'#304050'},{z:'红头咬鹃',e:'Red-headed Trogon',la:24,lo:108,d:'红绿配色热带宝石',s:'Harpactes erythrocephalus',c:'#c02020'},{z:'橙胸咬鹃',e:'Orange-breasted Trogon',la:10,lo:100,d:'橙绿配色如热带旗帜',s:'Harpactes oreskios',c:'#e08020'},{z:'赤胸拟啄木鸟',e:'Coppersmith Barbet',la:18,lo:78,d:'叫声像铁匠铺铛铛',s:'Psilopogon haemacephalus',c:'#c04040'},{z:'大拟啄木鸟',e:'Great Barbet',la:27,lo:86,d:'叫声像哥哥清晨闹钟',s:'Psilopogon virens',c:'#308050'},{z:'绿宽嘴鸟',e:'Green Broadbill',la:4,lo:117,d:'全身绿色隐于树冠',s:'Calyptomena viridis',c:'#30a020'},{z:'蓝顶翠鸟',e:'Common Paradise Kingfisher',la:-3,lo:137,d:'尾羽如彩旗',s:'Tanysiptera galatea',c:'#2080c0'},{z:'白腹海雕',e:'White-bellied Sea Eagle',la:12,lo:108,d:'东南亚海岸霸主',s:'Icthyophaga leucogaster',c:'#d0d0d0'},{z:'栗鸢',e:'Brahminy Kite',la:8,lo:98,d:'白头红身印度圣鸟',s:'Haliastur indus',c:'#c04010'},{z:'红原鸡',e:'Red Junglefowl',la:13,lo:102,d:'家鸡祖先',s:'Gallus gallus',c:'#c04020'},{z:'绿原鸡',e:'Green Junglefowl',la:-6,lo:110,d:'爪哇岛特有野鸡',s:'Gallus varius',c:'#208040'},{z:'孔雀雉',e:'Grey Peacock-Pheasant',la:20,lo:96,d:'翅膀有眼斑如孔雀',s:'Polyplectron bicalcaratum',c:'#607050'},{z:'棕三趾鹑',e:'Common Button-quail',la:15,lo:104,d:'雌鸟追求雄鸟角色反转',s:'Turnix sylvaticus',c:'#c09060'},{z:'长脚秧鸡',e:'Watercock',la:22,lo:114,d:'繁殖期雄鸟额板红色',s:'Gallicrex cinerea',c:'#404040'},{z:'铜翅水雉',e:'Bronze-winged Jacana',la:25,lo:82,d:'雄鸟照顾幼鸟',s:'Metopidius indicus',c:'#403020'},{z:'水雉',e:'Pheasant-tailed Jacana',la:22,lo:120,d:'尾长踩莲叶浮水',s:'Hydrophasianus chirurgus',c:'#c0a020'},{z:'黑颈䴙䴘',e:'Black-necked Grebe',la:38,lo:105,d:'颈部黑色繁殖羽',s:'Podiceps nigricollis',c:'#202020'},{z:'凤头䴙䴘',e:'Great Crested Grebe',la:48,lo:85,d:'繁殖期头冠如皇冠',s:'Podiceps cristatus',c:'#c09050'},{z:'角䴙䴘',e:'Slavonian Grebe',la:65,lo:80,d:'眼后金色耳饰',s:'Podiceps auritus',c:'#c07020'},{z:'黄苇鳽',e:'Yellow Bittern',la:22,lo:116,d:'芦苇中最小的鳽',s:'Ixobrychus sinensis',c:'#c0a040'},{z:'紫背苇鳽',e:'Von Schrenck\'s Bittern',la:45,lo:132,d:'东北湿地稀有',s:'Ixobrychus eurhythmus',c:'#804030'},{z:'岩鹭',e:'Pacific Reef Heron',la:22,lo:120,d:'海岸礁石上的优雅猎手',s:'Egretta sacra',c:'#606060'},{z:'黑冠鳽',e:'Black-crowned Night Heron',la:30,lo:118,d:'夜行捕鱼戴黑帽',s:'Nycticorax nycticorax',c:'#303060'},{z:'绿鹭',e:'Striated Heron',la:18,lo:106,d:'会用饵钓鱼聪明水鸟',s:'Butorides striata',c:'#304030'},{z:'大白鹭',e:'Great Egret',la:35,lo:118,d:'优雅纯白繁殖羽如丝',s:'Ardea alba',c:'#f0f0f0'},{z:'中白鹭',e:'Intermediate Egret',la:25,lo:118,d:'中等体型白鹭',s:'Ardea intermedia',c:'#f0f0f0'},{z:'牛背鹭',e:'Cattle Egret',la:28,lo:112,d:'跟随牛羊捕虫',s:'Bubulcus ibis',c:'#f0e0d0'},{z:'池鹭',e:'Chinese Pond Heron',la:28,lo:120,d:'繁殖期变身华丽',s:'Ardeola bacchus',c:'#c09050'},{z:'白眼潜鸭',e:'Baer\'s Pochard',la:45,lo:125,d:'全球极危不足千只',s:'Aythya baeri',c:'#303020'},{z:'青头潜鸭',e:'Baer\'s Pochard',la:40,lo:118,d:'绿头黑背潜水高手',s:'Aythya ferina',c:'#804020'},
+// ── EXPANDED EUROPE ──────────────────────────────────────────────────────────
+{z:'白背啄木鸟',e:'White-backed Woodpecker',la:60,lo:28,d:'欧洲最稀有啄木鸟',s:'Dendrocopos leucotos',c:'#d0c0c0'},{z:'三趾啄木鸟',e:'Three-toed Woodpecker',la:62,lo:24,d:'只有三根脚趾的啄木鸟',s:'Picoides tridactylus',c:'#c09060'},{z:'黑啄木鸟',e:'Black Woodpecker',la:56,lo:22,d:'欧洲最大啄木鸟如乌鸦',s:'Dryocopus martius',c:'#202020'},{z:'灰头绿啄木鸟',e:'Grey-headed Woodpecker',la:52,lo:18,d:'欧洲绿啄木鸟近亲',s:'Picus canus',c:'#508030'},{z:'乌林鸮',e:'Great Grey Owl',la:62,lo:28,d:'北方森林最大猫头鹰',s:'Strix nebulosa',c:'#909090'},{z:'猛鸮',e:'Hawk Owl',la:64,lo:26,d:'白天活动长尾似鹰',s:'Surnia ulula',c:'#807060'},{z:'花头鸺鹠',e:'Pygmy Owl',la:58,lo:24,d:'欧洲最小猫头鹰',s:'Glaucidium passerinum',c:'#806040'},{z:'鬼鸮',e:'Tengmalm\'s Owl',la:60,lo:26,d:'北方针叶林小型猫头鹰',s:'Aegolius funereus',c:'#907060'},{z:'红交嘴雀',e:'Common Crossbill',la:60,lo:20,d:'嘴尖交叉专门撬松果',s:'Loxia curvirostra',c:'#c04020'},{z:'白翅交嘴雀',e:'Two-barred Crossbill',la:62,lo:28,d:'翼上两道白斑',s:'Loxia leucoptera',c:'#c03020'},{z:'松鸦',e:'Eurasian Jay',la:50,lo:16,d:'记忆橡果埋藏位置',s:'Garrulus glandarius',c:'#c08060'},{z:'星鸦',e:'Spotted Nutcracker',la:58,lo:22,d:'埋藏数千粒松子过冬',s:'Nucifraga caryocatactes',c:'#504030'},{z:'北噪鸦',e:'Siberian Jay',la:62,lo:30,d:'极地探险家的守护鸟',s:'Perisoreus infaustus',c:'#907060'},{z:'冠小嘴乌鸦',e:'Hooded Crow',la:55,lo:30,d:'灰黑双色聪明乌鸦',s:'Corvus cornix',c:'#808080'},{z:'秃鼻乌鸦',e:'Rook',la:52,lo:22,d:'嘴基裸露灰白',s:'Corvus frugilegus',c:'#202030'},{z:'白嘴鸦',e:'Jackdaw',la:50,lo:14,d:'银色后脑门群居',s:'Coloeus monedula',c:'#606070'},{z:'红嘴山鸦',e:'Red-billed Chough',la:46,lo:8,d:'红嘴红脚高山特技飞行',s:'Pyrrhocorax pyrrhocorax',c:'#202020'},{z:'黄嘴山鸦',e:'Alpine Chough',la:46,lo:9,d:'黄嘴高山滑翔冠军',s:'Pyrrhocorax graculus',c:'#202020'},{z:'岩鹨',e:'Alpine Accentor',la:46,lo:10,d:'阿尔卑斯高山歌手',s:'Prunella collaris',c:'#807060'},{z:'欧亚鸲',e:'Dunnock',la:52,lo:2,d:'貌不惊人却有复杂婚配',s:'Prunella modularis',c:'#706050'},{z:'白喉歌鸲',e:'Thrush Nightingale',la:55,lo:35,d:'比夜莺声音更响亮',s:'Luscinia luscinia',c:'#907060'},{z:'欧亚红尾鸲',e:'Common Redstart',la:50,lo:12,d:'尾羽橘红不停颤动',s:'Phoenicurus phoenicurus',c:'#d05020'},{z:'白顶鵖',e:'Northern Wheatear',la:62,lo:10,d:'迁徙最远的鸫类',s:'Oenanthe oenanthe',c:'#c0a060'},{z:'白背矶鸫',e:'Rufous-tailed Rock Thrush',la:44,lo:12,d:'地中海岩石上的彩鸟',s:'Monticola saxatilis',c:'#a04030'},{z:'欧歌鸫',e:'Song Thrush',la:55,lo:12,d:'用石头砸蜗牛',s:'Turdus philomelos',c:'#906040'},{z:'白眉歌鸫',e:'Redwing',la:60,lo:15,d:'眼眉白纹冬季迁欧',s:'Turdus iliacus',c:'#904030'},{z:'欧乌鸫',e:'Eurasian Blackbird',la:50,lo:8,d:'城市中最美歌声',s:'Turdus merula',c:'#202020'},{z:'槲鸫',e:'Mistle Thrush',la:52,lo:10,d:'暴风雨中歌唱最勇敢',s:'Turdus viscivorus',c:'#a09070'},{z:'白腹毛脚燕',e:'Common House Martin',la:48,lo:4,d:'城市泥巢筑于屋檐',s:'Delichon urbicum',c:'#303060'},{z:'崖沙燕',e:'Sand Martin',la:52,lo:0,d:'沙崖打洞筑巢',s:'Riparia riparia',c:'#807060'},{z:'红背伯劳',e:'Red-backed Shrike',la:52,lo:14,d:'用荆棘串猎物食物柜',s:'Lanius collurio',c:'#a04030'},{z:'棕额伯劳',e:'Woodchat Shrike',la:42,lo:5,d:'黑白红三色义警',s:'Lanius senator',c:'#c04020'},{z:'白腹姬鹟',e:'European Pied Flycatcher',la:55,lo:14,d:'黑白捕虫闪电出击',s:'Ficedula hypoleuca',c:'#303030'},{z:'斑姬鹟',e:'Collared Flycatcher',la:52,lo:20,d:'领圈白色求偶广告',s:'Ficedula albicollis',c:'#303030'},{z:'半领翠鸟',e:'Common Kingfisher',la:46,lo:2,d:'蓝橙如宝石俯冲入水',s:'Alcedo atthis',c:'#0080c0'},{z:'欧斑鸠',e:'European Turtle Dove',la:44,lo:0,d:'爱情象征数量骤降',s:'Streptopelia turtur',c:'#c09060'},{z:'灰林鸮',e:'Tawny Owl',la:52,lo:8,d:'城市夜行霸主',s:'Strix aluco',c:'#906040'},{z:'仓鸮',e:'Barn Owl',la:51,lo:-1,d:'心形脸夜行最美猎手',s:'Tyto alba',c:'#d0c090'},{z:'纵纹腹小鸮',e:'Little Owl',la:48,lo:10,d:'雅典娜智慧象征',s:'Athena noctua',c:'#907050'},{z:'长耳鸮',e:'Long-eared Owl',la:52,lo:5,d:'耳羽长如兔耳',s:'Asio otus',c:'#907050'},{z:'短耳鸮',e:'Short-eared Owl',la:55,lo:0,d:'白天草地上低飞猎鼠',s:'Asio flammeus',c:'#c0a060'},{z:'欧夜鹰',e:'European Nightjar',la:52,lo:0,d:'夜晚机械般颤音',s:'Caprimulgus europaeus',c:'#907060'},{z:'戴菊',e:'Goldcrest',la:52,lo:8,d:'欧洲最小鸟重5克',s:'Regulus regulus',c:'#90c030'},{z:'火冠戴菊',e:'Firecrest',la:48,lo:6,d:'头顶火焰橙色冠',s:'Regulus ignicapilla',c:'#c05010'},{z:'蓝山雀',e:'Eurasian Blue Tit',la:52,lo:10,d:'蓝黄配色欧洲最常见',s:'Cyanistes caeruleus',c:'#4080c0'},{z:'沼泽山雀',e:'Marsh Tit',la:52,lo:5,d:'记忆储藏数百粒种子',s:'Poecile palustris',c:'#806050'},{z:'褐头山雀',e:'Willow Tit',la:56,lo:20,d:'自己凿树洞筑巢',s:'Poecile montanus',c:'#907060'},{z:'长尾山雀',e:'Long-tailed Tit',la:52,lo:4,d:'粉白色圆球形鸟',s:'Aegithalos caudatus',c:'#f0d0e0'},{z:'旋木雀',e:'Eurasian Treecreeper',la:52,lo:10,d:'螺旋爬行树干觅食',s:'Certhia familiaris',c:'#c0a060'},{z:'短趾旋木雀',e:'Short-toed Treecreeper',la:48,lo:6,d:'南欧版旋木雀',s:'Certhia brachydactyla',c:'#c0a060'},{z:'白胸鳾',e:'Eurasian Nuthatch',la:50,lo:12,d:'头朝下爬树的奇才',s:'Sitta europaea',c:'#6080a0'},{z:'欧洲金翅雀',e:'European Goldfinch',la:52,lo:4,d:'红脸金翅美丽歌鸟',s:'Carduelis carduelis',c:'#e02020'},{z:'黄雀',e:'Eurasian Siskin',la:55,lo:24,d:'黄绿色松果食客',s:'Spinus spinus',c:'#80c020'},{z:'红额金翅雀',e:'Common Linnet',la:50,lo:2,d:'红额胸繁殖羽',s:'Linaria cannabina',c:'#c04040'},{z:'黄鹀',e:'Yellowhammer',la:52,lo:14,d:'黄头歌鸟田野常见',s:'Emberiza citrinella',c:'#e0c020'},{z:'草鹀',e:'Corn Bunting',la:48,lo:2,d:'农田消失警示物种',s:'Emberiza calandra',c:'#c0a060'},{z:'苇鹀',e:'Reed Bunting',la:54,lo:8,d:'湿地黑头鹀',s:'Emberiza schoeniclus',c:'#302020'},{z:'雪鹀',e:'Snow Bunting',la:72,lo:5,d:'冬天降临平原白色精灵',s:'Plectrophenax nivalis',c:'#f0f0e0'},{z:'鹗',e:'Western Osprey',la:56,lo:14,d:'俯冲入水抓鱼',s:'Pandion haliaetus',c:'#404060'},{z:'白尾鸢',e:'Black-winged Kite',la:38,lo:-8,d:'悬停狩猎红眼精灵',s:'Elanus caeruleus',c:'#d0d0e0'},{z:'赤鸢',e:'Red Kite',la:52,lo:4,d:'威尔士象征叉尾猛禽',s:'Milvus milvus',c:'#c04020'},{z:'黑鸢',e:'Black Kite',la:48,lo:10,d:'城市垃圾场常见猛禽',s:'Milvus migrans',c:'#504030'},{z:'白腹鹞',e:'Hen Harrier',la:55,lo:-4,d:'雄雌色差显著',s:'Circus cyaneus',c:'#9090c0'},{z:'乌灰鹞',e:'Montagu\'s Harrier',la:46,lo:2,d:'最优雅的鹞类',s:'Circus pygargus',c:'#9090c0'},
+// ── EXPANDED AFRICA ──────────────────────────────────────────────────────────
+{z:'蓝冠蕉鹃',e:'Great Blue Turaco',la:0,lo:28,d:'非洲最大蕉鹃',s:'Corythaeola cristata',c:'#2080c0'},{z:'非洲绿蕉鹃',e:'Knysna Turaco',la:-34,lo:24,d:'南非海岸林绿色宝石',s:'Tauraco corythaix',c:'#20a040'},{z:'利文斯顿蕉鹃',e:'Livingstone\'s Turaco',la:-18,lo:35,d:'尾羽深绿闪耀',s:'Tauraco livingstonii',c:'#208040'},{z:'东非冕鹤',e:'Black Crowned Crane',la:12,lo:5,d:'西非草原舞者',s:'Balearica pavonina',c:'#d0c0a0'},{z:'鹳鹤',e:'Wattled Crane',la:-15,lo:30,d:'非洲最高鹤1.75米',s:'Bugeranus carunculatus',c:'#c0c0c0'},{z:'肉垂鹤',e:'Blue Crane',la:-30,lo:26,d:'南非国鸟',s:'Anthropoides paradiseus',c:'#9090b0'},{z:'非洲白颈鹭',e:'Black-headed Heron',la:-5,lo:37,d:'非洲草原黑头鹭',s:'Ardea melanocephala',c:'#303030'},{z:'大白鹭',e:'Great White Egret',la:0,lo:30,d:'非洲湖泊白色精灵',s:'Ardea alba',c:'#f0f0f0'},{z:'紫鹭',e:'Purple Heron',la:5,lo:8,d:'细长如芦苇的鹭',s:'Ardea purpurea',c:'#805040'},{z:'非洲幽鹭',e:'African Bittern',la:-25,lo:32,d:'芦苇中的隐形大师',s:'Botaurus stellaris',c:'#c0a060'},{z:'大鸨鸵',e:'Kori Bustard',la:-24,lo:26,d:'非洲最重飞鸟19公斤',s:'Ardeotis kori',c:'#c0a060'},{z:'豹鸨',e:'Black-bellied Bustard',la:-18,lo:28,d:'黑腹彩色颈纹',s:'Lissotis melanogaster',c:'#c09050'},{z:'红冠鸨',e:'Red-crested Korhaan',la:-22,lo:22,d:'求偶时从空中俯冲',s:'Lophotis ruficrista',c:'#c0a060'},{z:'非洲水雉',e:'African Jacana',la:-5,lo:30,d:'大脚莲叶上奔跑',s:'Actophilornis africanus',c:'#c07020'},{z:'彩鹬',e:'Greater Painted-snipe',la:0,lo:32,d:'雌鸟追求雄鸟',s:'Rostratula benghalensis',c:'#507040'},{z:'非洲反嘴鹬',e:'Pied Avocet',la:-34,lo:20,d:'弯嘴扫食盐湖',s:'Recurvirostra avosetta',c:'#f0f0f0'},{z:'三带鸻',e:'Three-banded Plover',la:-22,lo:30,d:'胸前两道黑环',s:'Charadrius tricollaris',c:'#c09060'},{z:'皇冠麦鸡',e:'Crowned Lapwing',la:-24,lo:28,d:'红白黑三色头冠',s:'Vanellus coronatus',c:'#c09060'},{z:'非洲翡翠鸟',e:'Malachite Kingfisher',la:2,lo:30,d:'比普通翠鸟更小更亮',s:'Corythornis cristata',c:'#0090d0'},{z:'斑鱼狗',e:'Pied Kingfisher',la:5,lo:35,d:'黑白悬停捕鱼',s:'Ceryle rudis',c:'#303030'},{z:'亚宝翡翠',e:'Woodland Kingfisher',la:5,lo:25,d:'非洲内陆蓝翠鸟',s:'Halcyon senegalensis',c:'#2080c0'},{z:'褐背捕蛛鸟',e:'Brown-backed Honeybird',la:-20,lo:28,d:'引导人找蜂巢',s:'Prodotiscus regulus',c:'#806040'},{z:'响蜜鴷',e:'Greater Honeyguide',la:0,lo:35,d:'引导人找蜂巢获取蜂蜡',s:'Indicator indicator',c:'#806040'},{z:'黑白鱼鸢',e:'African Fish Eagle',la:-8,lo:32,d:'非洲荒野标志音',s:'Haliaeetus vocifer',c:'#604020'},{z:'红头秃鹫',e:'Lappet-faced Vulture',la:-20,lo:25,d:'最大非洲秃鹫',s:'Torgos tracheliotos',c:'#502010'},{z:'白头秃鹫',e:'White-headed Vulture',la:-15,lo:30,d:'白头红嘴独树一帜',s:'Trigonoceps occipitalis',c:'#d0d0d0'},{z:'黑白兀鹫',e:'Rüppell\'s Griffon',la:10,lo:37,d:'飞翔高度超过11000米',s:'Gyps rueppelli',c:'#c0a060'},{z:'棕背兀鹫',e:'White-backed Vulture',la:-20,lo:28,d:'非洲最常见秃鹫',s:'Gyps africanus',c:'#c0a060'},{z:'蛇鹫',e:'Secretary Bird',la:-25,lo:27,d:'用脚踩死毒蛇',s:'Sagittarius serpentarius',c:'#d0d0d0'},{z:'非洲隼',e:'Taita Falcon',la:-15,lo:32,d:'东非特有小隼',s:'Falco fasciinucha',c:'#605060'},{z:'红颈隼',e:'Red-necked Falcon',la:15,lo:25,d:'非洲草原小型隼',s:'Falco chicquera',c:'#c06040'},{z:'棕腹隼',e:'Dickinson\'s Kestrel',la:-15,lo:35,d:'莫桑比克特有',s:'Falco dickinsoni',c:'#9090a0'},{z:'黑头鵟雕',e:'Martial Eagle',la:-20,lo:27,d:'非洲最强猛禽杀羚羊',s:'Polemaetus bellicosus',c:'#604020'},{z:'棕雕',e:'Tawny Eagle',la:10,lo:35,d:'非洲草原黄褐大雕',s:'Aquila rapax',c:'#806030'},{z:'黑胸蛇雕',e:'Black-chested Snake Eagle',la:-10,lo:30,d:'专门猎蛇的雕',s:'Circaetus pectoralis',c:'#304040'},{z:'棕色蛇雕',e:'Brown Snake Eagle',la:-18,lo:28,d:'大头短尾猎蛇专家',s:'Circaetus cinereus',c:'#604030'},{z:'长冠鹰雕',e:'Long-crested Eagle',la:-8,lo:35,d:'长冠羽飘逸',s:'Lophaetus occipitalis',c:'#202020'},{z:'鱼雕',e:'African Hawk-Eagle',la:-5,lo:28,d:'非洲森林高速猎手',s:'Aquila spilogaster',c:'#604030'},{z:'棕腹草鸮',e:'African Grass Owl',la:-28,lo:30,d:'南非草地心形脸',s:'Tyto capensis',c:'#c0a060'},{z:'珍珠斑鸡',e:'Helmeted Guineafowl',la:-20,lo:25,d:'头盔蓝脸啼声嘈杂',s:'Numida meleagris',c:'#606060'},{z:'秃鸛',e:'Marabou Stork',la:5,lo:38,d:'最丑鸟之一肉垂巨大',s:'Leptoptilos crumenifer',c:'#808080'},{z:'钳嘴鸛',e:'African Openbill',la:2,lo:33,d:'嘴中间有间隙夹蜗牛',s:'Anastomus lamelligerus',c:'#303030'},{z:'黑颈鸬鹚',e:'Long-tailed Cormorant',la:0,lo:32,d:'非洲小型黑色鸬鹚',s:'Microcarbo africanus',c:'#202020'},{z:'粉红鹈鹕',e:'Great White Pelican',la:0,lo:36,d:'群猎鱼合力驱赶',s:'Pelecanus onocrotalus',c:'#f0d0c0'},{z:'粉背鹈鹕',e:'Pink-backed Pelican',la:5,lo:30,d:'非洲森林鹈鹕',s:'Pelecanus rufescens',c:'#f0d0c0'},{z:'锤头鹳',e:'Hamerkop',la:-5,lo:34,d:'头形如锤子独特鸟类',s:'Scopus umbretta',c:'#705030'},{z:'彩虹山椒鸟',e:'Little Bee-eater',la:10,lo:25,d:'最小蜂虎绿红组合',s:'Merops pusillus',c:'#80c030'},{z:'红喉蜂虎',e:'Red-throated Bee-eater',la:12,lo:15,d:'红喉绿身撒哈拉南缘',s:'Merops bulocki',c:'#c04020'},{z:'燕尾蜂虎',e:'Swallow-tailed Bee-eater',la:-25,lo:22,d:'燕尾分叉南非沙漠',s:'Merops hirundineus',c:'#3080c0'},{z:'非洲狮子鸟',e:'African Pygmy Kingfisher',la:5,lo:22,d:'最小非洲翡翠鸟',s:'Ispidina picta',c:'#e06020'},{z:'橙颊梅花雀',e:'Orange-cheeked Waxbill',la:8,lo:5,d:'西非橙颊小雀',s:'Estrilda melpoda',c:'#e07020'},{z:'红嘴奎利亚雀',e:'Red-billed Quelea',la:12,lo:25,d:'世界数量最多的鸟15亿',s:'Quelea quelea',c:'#c05030'},{z:'南非织雀',e:'Cape Weaver',la:-32,lo:20,d:'南非特有黄色织雀',s:'Ploceus capensis',c:'#e0c020'},{z:'东非织雀',e:'Baglafecht Weaver',la:-5,lo:36,d:'东非高地特有',s:'Ploceus baglafecht',c:'#e0c020'},{z:'红头文鸟',e:'Red-headed Weaver',la:5,lo:28,d:'红头如火西非织雀',s:'Anaplectes rubriceps',c:'#c02020'},{z:'非洲长爪鹨',e:'African Pipit',la:-25,lo:28,d:'南非草原最常见鹨',s:'Anthus cinnamomeus',c:'#c0a060'},{z:'棕扇尾莺',e:'Zitting Cisticola',la:10,lo:15,d:'尾巴上下抖动嗡嗡叫',s:'Cisticola juncidis',c:'#c0a060'},{z:'非洲扇尾莺',e:'Desert Cisticola',la:15,lo:10,d:'沙漠边缘草原莺',s:'Cisticola aridulus',c:'#c0a060'},{z:'太阳鸟',e:'Scarlet-chested Sunbird',la:-10,lo:35,d:'胸部猩红闪耀',s:'Chalcomitra senegalensis',c:'#c02020'},{z:'橄榄太阳鸟',e:'Olive Sunbird',la:0,lo:28,d:'非洲最常见太阳鸟',s:'Cyanomitra olivacea',c:'#305030'},{z:'辉太阳鸟',e:'Superb Sunbird',la:-2,lo:30,d:'金属光泽炫彩', s:'Cinnyris superbus',c:'#2040c0'},{z:'东非紫胸太阳鸟',e:'Purple-banded Sunbird',la:-5,lo:38,d:'紫蓝胸带闪耀',s:'Cinnyris bifasciatus',c:'#4020a0'},{z:'白眼鸟',e:'Cape White-eye',la:-33,lo:22,d:'南非白眼圈小绿鸟',s:'Zosterops virens',c:'#80c040'},{z:'东非白眼鸟',e:'African Yellow White-eye',la:-15,lo:35,d:'黄绿色东非常见',s:'Zosterops senegalensis',c:'#a0c030'},
+// ── EXPANDED N. AMERICA ──────────────────────────────────────────────────────
+{z:'野火鸡',e:'Wild Turkey',la:36,lo:-88,d:'感恩节主角林中大鸟',s:'Meleagris gallopavo',c:'#604020'},{z:'北山鹑',e:'Northern Bobwhite',la:35,lo:-90,d:'叫声鲍勃怀特',s:'Colinus virginianus',c:'#a07040'},{z:'加州鹑',e:'California Quail',la:37,lo:-122,d:'加州州鸟头冠如问号',s:'Callipepla californica',c:'#607040'},{z:'山齿鹑',e:'Gambel\'s Quail',la:33,lo:-112,d:'沙漠中优雅行进',s:'Callipepla gambelii',c:'#c08040'},{z:'帽翎鹑',e:'Mountain Quail',la:38,lo:-122,d:'头上有直立冠羽',s:'Oreortyx pictus',c:'#806040'},{z:'环颈雉',e:'Ring-necked Pheasant',la:46,lo:-104,d:'白领环颈引入北美',s:'Phasianus colchicus',c:'#c04020'},{z:'草原松鸡',e:'Greater Prairie-Chicken',la:40,lo:-98,d:'雄鸟气囊充气求偶',s:'Tympanuchus cupido',c:'#c09050'},{z:'尖尾松鸡',e:'Sharp-tailed Grouse',la:50,lo:-105,d:'草原上踏步舞蹈求偶',s:'Tympanuchus phasianellus',c:'#c0a060'},{z:'艾草松鸡',e:'Greater Sage-Grouse',la:42,lo:-110,d:'气囊膨胀的草地舞者',s:'Centrocercus urophasianus',c:'#907060'},{z:'雷鸟',e:'Willow Ptarmigan',la:65,lo:-125,d:'阿拉斯加州鸟冬羽白',s:'Lagopus lagopus',c:'#f0f0f0'},{z:'矶鹬',e:'Spotted Sandpiper',la:46,lo:-88,d:'河边点头走路',s:'Actitis macularius',c:'#c0a060'},{z:'美洲鹬',e:'American Woodcock',la:42,lo:-76,d:'超大眼睛地面探虫',s:'Scolopax minor',c:'#c09060'},{z:'威尔逊丘鹬',e:'Wilson\'s Snipe',la:50,lo:-100,d:'俯冲时尾羽发出闷声',s:'Gallinago delicata',c:'#c0a060'},{z:'长嘴杓鹬',e:'Long-billed Curlew',la:35,lo:-115,d:'嘴长如镰刀探泥',s:'Numenius americanus',c:'#c09050'},{z:'塍鹬',e:'Marbled Godwit',la:45,lo:-100,d:'锈红长嘴上翘',s:'Limosa fedoa',c:'#c07040'},{z:'红腹滨鹬',e:'Red Knot',la:65,lo:-80,d:'繁殖期腹部砖红',s:'Calidris canutus',c:'#c06040'},{z:'白腰鹬',e:'Pectoral Sandpiper',la:68,lo:-110,d:'北极繁殖南美越冬',s:'Calidris melanotos',c:'#c09060'},{z:'美洲蛎鹬',e:'American Oystercatcher',la:35,lo:-76,d:'红嘴开牡蛎壳',s:'Haematopus palliatus',c:'#e04020'},{z:'黑颈长脚鹬',e:'Black-necked Stilt',la:35,lo:-118,d:'超长红腿比例夸张',s:'Himantopus mexicanus',c:'#f0f0f0'},{z:'美洲反嘴鹬',e:'American Avocet',la:38,lo:-120,d:'橙头蓝腿盐湖舞者',s:'Recurvirostra americana',c:'#c06030'},{z:'刺嘴莺',e:'Common Yellowthroat',la:40,lo:-80,d:'黑面罩黄喉湿地',s:'Geothlypis trichas',c:'#c0c020'},{z:'美洲红雀',e:'Northern Cardinal',la:35,lo:-82,d:'全身火红雄鸟',s:'Cardinalis cardinalis',c:'#d02020'},{z:'玫胸白斑翅雀',e:'Rose-breasted Grosbeak',la:44,lo:-78,d:'胸口玫瑰红三角',s:'Pheucticus ludovicianus',c:'#c02040'},{z:'靛蓝彩鹀',e:'Indigo Bunting',la:40,lo:-88,d:'雄鸟全身宝蓝',s:'Passerina cyanea',c:'#2040c0'},{z:'彩鹀',e:'Painted Bunting',la:33,lo:-90,d:'北美最彩色的鸟',s:'Passerina ciris',c:'#20a020'},{z:'美洲金翅雀',e:'American Goldfinch',la:43,lo:-82,d:'黄色如小太阳',s:'Spinus tristis',c:'#e0c020'},{z:'紫雀',e:'Purple Finch',la:46,lo:-72,d:'覆莓红色雄鸟',s:'Haemorhous purpureus',c:'#c04060'},{z:'家朱雀',e:'House Finch',la:36,lo:-115,d:'西部常见红头雀',s:'Haemorhous mexicanus',c:'#c03020'},{z:'松金翅',e:'Pine Siskin',la:50,lo:-115,d:'冬季南迁的黄纹雀',s:'Spinus pinus',c:'#c0a050'},{z:'黑顶山雀',e:'Black-capped Chickadee',la:47,lo:-88,d:'北美最受欢迎小鸟',s:'Poecile atricapillus',c:'#303030'},{z:'卡罗莱纳山雀',e:'Carolina Chickadee',la:35,lo:-82,d:'东南部版黑顶山雀',s:'Poecile carolinensis',c:'#303030'},{z:'褐头山雀',e:'Chestnut-backed Chickadee',la:47,lo:-122,d:'太平洋岸栗背版',s:'Poecile rufescens',c:'#904030'},{z:'普通树燕',e:'Tree Swallow',la:48,lo:-90,d:'蓝绿金属光泽燕',s:'Tachycineta bicolor',c:'#304080'},{z:'崖燕',e:'Cliff Swallow',la:44,lo:-100,d:'泥巢群落壮观',s:'Petrochelidon pyrrhonota',c:'#c06030'},{z:'北美紫燕',e:'Purple Martin',la:38,lo:-92,d:'北美最大燕子',s:'Progne subis',c:'#304070'},{z:'棕曲嘴鹪鹩',e:'Cactus Wren',la:32,lo:-110,d:'亚利桑那州鸟',s:'Campylorhynchus brunneicapillus',c:'#906040'},{z:'卡罗莱纳鹪鹩',e:'Carolina Wren',la:36,lo:-82,d:'响彻森林的洪亮歌声',s:'Thryothorus ludovicianus',c:'#c07040'},{z:'沼泽鹪鹩',e:'Marsh Wren',la:43,lo:-90,d:'芦苇丛歌唱家',s:'Cistothorus palustris',c:'#906040'},{z:'隐居夜鸫',e:'Hermit Thrush',la:45,lo:-72,d:'美国最美歌声之一',s:'Catharus guttatus',c:'#906040'},{z:'北美鸫',e:'Veery',la:44,lo:-74,d:'螺旋下降的笛声',s:'Catharus fuscescens',c:'#a07050'},{z:'北美拟八哥',e:'Common Grackle',la:40,lo:-86,d:'虹彩黑色群栖成千',s:'Quiscalus quiscula',c:'#202040'},{z:'布氏拟八哥',e:'Brewer\'s Blackbird',la:44,lo:-118,d:'西部常见黄眼拟八哥',s:'Euphagus cyanocephalus',c:'#202040'},{z:'棕头牛鹂',e:'Brown-headed Cowbird',la:40,lo:-95,d:'巢寄生产卵别家巢',s:'Molothrus ater',c:'#603020'},{z:'美洲黄鹂',e:'Baltimore Oriole',la:42,lo:-76,d:'橙黑配色树冠高歌',s:'Icterus galbula',c:'#e06010'},{z:'果园黄鹂',e:'Orchard Oriole',la:38,lo:-90,d:'栗腹黑背求偶歌',s:'Icterus spurius',c:'#903020'},{z:'黑背草地鹨',e:'Western Meadowlark',la:42,lo:-102,d:'堪萨斯州鸟黄胸草原歌手',s:'Sturnella neglecta',c:'#e0c020'},{z:'东部草地鹨',e:'Eastern Meadowlark',la:38,lo:-86,d:'草地V形黑领',s:'Sturnella magna',c:'#e0c020'},{z:'白喉带鹀',e:'White-throated Sparrow',la:45,lo:-75,d:'白喉黄眉冬候鸟',s:'Zonotrichia albicollis',c:'#a09070'},{z:'狐色带鹀',e:'Fox Sparrow',la:52,lo:-120,d:'红棕最大带鹀',s:'Passerella iliaca',c:'#c06030'},{z:'歌带鹀',e:'Song Sparrow',la:44,lo:-88,d:'胸斑最常见带鹀',s:'Melospiza melodia',c:'#a08060'},{z:'黑喉带鹀',e:'Dark-eyed Junco',la:48,lo:-100,d:'雪鸟冬季造访',s:'Junco hyemalis',c:'#404040'},{z:'美洲麻雀',e:'American Tree Sparrow',la:60,lo:-100,d:'北极繁殖南迁越冬',s:'Spizelloides arborea',c:'#c07040'},{z:'北方地鸦',e:'Clark\'s Nutcracker',la:44,lo:-118,d:'记忆数万粒松子',s:'Nucifraga columbiana',c:'#909090'},{z:'灰噪鸦',e:'Canada Jay',la:52,lo:-105,d:'加拿大国鸟候选者',s:'Perisoreus canadensis',c:'#808080'},{z:'黑嘴喜鹊',e:'Black-billed Magpie',la:48,lo:-110,d:'西部草原长尾喜鹊',s:'Pica hudsonia',c:'#202020'},{z:'美洲乌鸦',e:'American Crow',la:44,lo:-90,d:'极聪明会制造工具',s:'Corvus brachyrhynchos',c:'#202020'},{z:'鱼鸦',e:'Fish Crow',la:36,lo:-77,d:'东南海岸专吃鱼',s:'Corvus ossifragus',c:'#202020'},{z:'美洲鸬鹚',e:'Double-crested Cormorant',la:45,lo:-85,d:'五大湖最常见鸬鹚',s:'Nannopterum auritum',c:'#202020'},{z:'美洲白鹈鹕',e:'American White Pelican',la:48,lo:-98,d:'翼展2.8米内陆湖渔民',s:'Pelecanus erythrorhynchos',c:'#f0f0f0'},{z:'褐鹈鹕',e:'Brown Pelican',la:30,lo:-90,d:'俯冲入海捕鱼',s:'Pelecanus occidentalis',c:'#906040'},{z:'美洲苍鹭',e:'Great Blue Heron',la:45,lo:-90,d:'北美最大鹭1.3米',s:'Ardea herodias',c:'#607090'},{z:'小蓝鹭',e:'Little Blue Heron',la:33,lo:-82,d:'成鸟蓝灰幼鸟全白',s:'Egretta caerulea',c:'#6080a0'},{z:'雪鹭',e:'Snowy Egret',la:32,lo:-90,d:'金爪白鹭优雅舞动',s:'Egretta thula',c:'#f0f0f0'},{z:'三色鹭',e:'Tricolored Heron',la:30,lo:-89,d:'蓝白腹三色组合',s:'Egretta tricolor',c:'#6080c0'},{z:'北美苍鹭',e:'Black-crowned Night Heron',la:40,lo:-74,d:'红眼黑帽夜行猎手',s:'Nycticorax nycticorax',c:'#303060'},{z:'栗腹夜鹭',e:'Yellow-crowned Night Heron',la:33,lo:-88,d:'黄冠黑面夜鹭',s:'Nyctanassa violacea',c:'#706050'},{z:'美洲鹮',e:'White Ibis',la:30,lo:-82,d:'弯嘴红脸群栖',s:'Eudocimus albus',c:'#f0f0f0'},{z:'光脸朱鹭',e:'Glossy Ibis',la:38,lo:-76,d:'金属绿棕色美洲鹮',s:'Plegadis falcinellus',c:'#503020'},{z:'红树林燕',e:'Mangrove Swallow',la:20,lo:-87,d:'中美洲红树林翡翠燕',s:'Tachycineta albilinea',c:'#304070'},{z:'白腹迅燕',e:'White-throated Swift',la:38,lo:-118,d:'北美最快燕子',s:'Aeronautes saxatalis',c:'#303030'},{z:'安娜蜂鸟',e:'Anna\'s Hummingbird',la:37,lo:-122,d:'雄鸟喉部玫瑰红',s:'Calypte anna',c:'#c02060'},{z:'红宝石蜂鸟',e:'Ruby-throated Hummingbird',la:38,lo:-82,d:'东部唯一蜂鸟',s:'Archilochus colubris',c:'#c02020'},{z:'宽尾蜂鸟',e:'Broad-tailed Hummingbird',la:38,lo:-106,d:'高山草地金属绿蜂鸟',s:'Selasphorus platycercus',c:'#20c040'},{z:'艾伦蜂鸟',e:'Allen\'s Hummingbird',la:36,lo:-120,d:'加州特有橙红蜂鸟',s:'Selasphorus sasin',c:'#c06020'},{z:'冠蓝鸦',e:'Steller\'s Jay',la:48,lo:-122,d:'黑冠蓝翅太平洋岸',s:'Cyanocitta stelleri',c:'#2050a0'},{z:'佛罗里达丛鸦',e:'Florida Scrub-Jay',la:28,lo:-82,d:'佛罗里达特有鸦',s:'Aphelocoma coerulescens',c:'#4060c0'},{z:'墨西哥鸦',e:'Woodhouse\'s Scrub-Jay',la:36,lo:-112,d:'西部内陆蓝灰鸦',s:'Aphelocoma woodhouseii',c:'#4060a0'},{z:'橡树啄木鸟',e:'Acorn Woodpecker',la:36,lo:-120,d:'储藏橡子的冠军',s:'Melanerpes formicivorus',c:'#c02020'},{z:'北扑翅䴕',e:'Northern Flicker',la:44,lo:-95,d:'地面蚂蚁专家',s:'Colaptes auratus',c:'#c09040'},{z:'绒啄木鸟',e:'Downy Woodpecker',la:44,lo:-88,d:'北美最小常见啄木鸟',s:'Dryobates pubescens',c:'#f0f0f0'},{z:'毛啄木鸟',e:'Hairy Woodpecker',la:47,lo:-90,d:'绒啄木鸟大版本',s:'Dryobates villosus',c:'#f0f0f0'},{z:'红腹啄木鸟',e:'Red-bellied Woodpecker',la:38,lo:-82,d:'红帽黄腹东部常见',s:'Melanerpes carolinus',c:'#c02020'},{z:'黑腹栖鸭',e:'Black-bellied Whistling-Duck',la:28,lo:-98,d:'粉嘴红腿树栖鸭',s:'Dendrocygna autumnalis',c:'#c04030'},{z:'美洲绿翅鸭',e:'Green-winged Teal',la:50,lo:-96,d:'北美最小猎鸭',s:'Anas carolinensis',c:'#306040'},{z:'美洲尖尾鸭',e:'Northern Pintail',la:55,lo:-108,d:'长尾优雅北部繁殖',s:'Anas acuta',c:'#c0a080'},{z:'琵嘴鸭',e:'Northern Shoveler',la:48,lo:-100,d:'铲状大嘴过滤食物',s:'Spatula clypeata',c:'#306040'},{z:'红头鸭',e:'Redhead',la:46,lo:-100,d:'铜红头部潜鸭',s:'Aythya americana',c:'#c04020'},{z:'帆背潜鸭',e:'Canvasback',la:50,lo:-105,d:'长嘴斜额白背大潜鸭',s:'Aythya valisineria',c:'#c03020'},{z:'美洲秋沙鸭',e:'Common Merganser',la:50,lo:-95,d:'长嘴锯齿捕鱼鸭',s:'Mergus merganser',c:'#204060'},{z:'泽鸭',e:'Ruddy Duck',la:44,lo:-100,d:'尾巴竖立求偶',s:'Oxyura jamaicensis',c:'#c05020'},
+// ── EXPANDED S. AMERICA ──────────────────────────────────────────────────────
+{z:'蓝顶亚马逊鹦鹉',e:'Blue-fronted Amazon',la:-15,lo:-55,d:'会说话的绿鹦鹉',s:'Amazona aestiva',c:'#40a030'},{z:'黄顶亚马逊',e:'Yellow-crowned Amazon',la:5,lo:-65,d:'黄头绿身长寿鹦鹉',s:'Amazona ochrocephala',c:'#40a020'},{z:'太阳锥尾鹦鹉',e:'Sun Parakeet',la:6,lo:-60,d:'全身金黄如太阳',s:'Aratinga solstitialis',c:'#e0b020'},{z:'黄白肩锥尾',e:'White-eyed Parakeet',la:-8,lo:-55,d:'绿白红三色',s:'Psittacara leucophthalmus',c:'#30a030'},{z:'南美金字塔鸟',e:'Hoatzin',la:-5,lo:-65,d:'史前鸟幼鸟有爪',s:'Opisthocomus hoazin',c:'#a06020'},{z:'南美麻雀鹰',e:'Tiny Hawk',la:-5,lo:-60,d:'最小鹰类之一',s:'Microspizias superciliosus',c:'#806060'},{z:'鬣蜥猎鹰',e:'Laughing Falcon',la:10,lo:-83,d:'专吃蛇发出笑声',s:'Herpetotheres cachinnans',c:'#c09040'},{z:'南美长冠雕',e:'Ornate Hawk-Eagle',la:5,lo:-62,d:'长冠羽飘逸高空猎手',s:'Spizaetus ornatus',c:'#604030'},{z:'黑鹰',e:'Black-and-chestnut Eagle',la:-15,lo:-73,d:'安第斯黑栗色大雕',s:'Spizaetus isidori',c:'#403020'},{z:'大型蛇雕',e:'Guiana Crested Eagle',la:5,lo:-58,d:'圭亚那高地特有',s:'Morphnus guianensis',c:'#605050'},{z:'南美鹈鹕',e:'Peruvian Pelican',la:-12,lo:-78,d:'秘鲁海岸最大鹈鹕',s:'Pelecanus thagus',c:'#f0d0c0'},{z:'斑翅弄鹃',e:'Squirrel Cuckoo',la:10,lo:-75,d:'松鼠般跳跃树间',s:'Piaya cayana',c:'#a05030'},{z:'黄嘴地鹃',e:'Smooth-billed Ani',la:15,lo:-72,d:'黑色大嘴群居',s:'Crotophaga ani',c:'#202020'},{z:'沟嘴地鹃',e:'Groove-billed Ani',la:18,lo:-90,d:'嘴上有沟纹',s:'Crotophaga sulcirostris',c:'#202020'},{z:'黑鸭',e:'Muscovy Duck',la:10,lo:-68,d:'面部肉疣家鸭祖先',s:'Cairina moschata',c:'#303030'},{z:'美洲热带鹡鸰',e:'White Wagtail',la:-30,lo:-58,d:'南锥体草地鸟',s:'Motacilla alba',c:'#c0c0c0'},{z:'橙腹灰雀',e:'Saffron Finch',la:-28,lo:-57,d:'全身橙黄阿根廷常见',s:'Sicalis flaveola',c:'#e0b020'},{z:'叉尾风鸟',e:'Fork-tailed Flycatcher',la:-30,lo:-60,d:'尾羽极长如燕',s:'Tyrannus savana',c:'#404040'},{z:'热带王霸鹟',e:'Tropical Kingbird',la:10,lo:-74,d:'最常见热带大型鹟',s:'Tyrannus melancholicus',c:'#c0c020'},{z:'橙顶王霸鹟',e:'Eastern Kingbird',la:5,lo:-60,d:'顶部隐藏橙斑',s:'Tyrannus tyrannus',c:'#303030'},{z:'冠拟霸鹟',e:'Great Kiskadee',la:-10,lo:-52,d:'叫声Kis-ka-dee',s:'Pitangus sulphuratus',c:'#c0c020'},{z:'社会鹟',e:'Social Flycatcher',la:10,lo:-80,d:'群居城市花园',s:'Myiozetetes similis',c:'#c0c020'},{z:'黄腹鹟',e:'Yellow-bellied Flycatcher',la:8,lo:-77,d:'黄腹绿背湿地',s:'Empidonax flaviventris',c:'#90c020'},{z:'南美红胸鸫',e:'Rufous-bellied Thrush',la:-25,lo:-50,d:'巴西国鸟橙腹',s:'Turdus rufiventris',c:'#c07040'},{z:'南美夜鹰',e:'Common Pauraque',la:10,lo:-85,d:'地面伏卧夜行',s:'Nyctidromus albicollis',c:'#907060'},{z:'南美白翅蜡嘴雀',e:'Yellow Grosbeak',la:20,lo:-104,d:'黄黑配色大嘴雀',s:'Pheucticus chrysopeplus',c:'#e0c020'},{z:'橙胸雀',e:'Orange-breasted Bunting',la:18,lo:-102,d:'墨西哥特有彩鸟',s:'Passerina leclancherii',c:'#40a0c0'},{z:'安第斯金刚鹦鹉',e:'Military Macaw',la:-18,lo:-68,d:'绿色带红头大鹦鹉',s:'Ara militaris',c:'#408030'},{z:'蓝金刚鹦鹉',e:'Lear\'s Macaw',la:-10,lo:-40,d:'全球不足千只蓝色',s:'Anodorhynchus leari',c:'#3040c0'},{z:'紫蓝金刚鹦鹉',e:'Spix\'s Macaw',la:-10,lo:-42,d:'野外灭绝现仅圈养',s:'Cyanopsitta spixii',c:'#4060c0'},{z:'亚马逊翠鸟',e:'Amazon Kingfisher',la:-5,lo:-68,d:'绿冠大翠鸟',s:'Chloroceryle amazona',c:'#208040'},{z:'绿翠鸟',e:'Green Kingfisher',la:10,lo:-84,d:'小型绿白翠鸟',s:'Chloroceryle americana',c:'#208030'},{z:'南美鹮',e:'Buff-necked Ibis',la:-15,lo:-48,d:'白颈棕体大鹮',s:'Theristicus caudatus',c:'#c09050'},{z:'玫瑰琵鹭',e:'Roseate Spoonbill',la:-20,lo:-50,d:'粉红色宽嘴琵鹭',s:'Platalea ajaja',c:'#f060a0'},{z:'绿冠翡翠',e:'Ringed Kingfisher',la:-10,lo:-52,d:'南美最大翡翠鸟',s:'Megaceryle torquata',c:'#2050a0'},{z:'南美野鸭',e:'Rosy-billed Pochard',la:-38,lo:-62,d:'红嘴蓝灰南锥体鸭',s:'Netta peposaca',c:'#202040'},{z:'安第斯燕鸥',e:'Inca Tern',la:-14,lo:-76,d:'白须优雅海燕',s:'Larosterna inca',c:'#404050'},{z:'丽色唐纳雀',e:'Paradise Tanager',la:-5,lo:-68,d:'九色高原唐纳雀',s:'Tangara chilensis',c:'#20a060'},{z:'绿黄唐纳雀',e:'Blue-gray Tanager',la:5,lo:-67,d:'蓝灰最常见唐纳雀',s:'Thraupis episcopus',c:'#6090c0'},{z:'橙腹唐纳雀',e:'Palm Tanager',la:-10,lo:-48,d:'棕榈树顶棕绿',s:'Thraupis palmarum',c:'#608040'},{z:'深红唐纳雀',e:'Scarlet Tanager',la:5,lo:-60,d:'猩红黑翅如火',s:'Piranga olivacea',c:'#c02020'},{z:'巴西红衣主教',e:'Red-crested Cardinal',la:-25,lo:-58,d:'红冠白腹仙鸟',s:'Paroaria coronata',c:'#c02020'},{z:'黄腹拟鹂',e:'Epaulet Oriole',la:-18,lo:-44,d:'黄肩章拟鹂',s:'Icterus cayanensis',c:'#e0c020'},{z:'南美椋鸟',e:'Shiny Cowbird',la:-25,lo:-52,d:'蓝黑金属光泽牛鹂',s:'Molothrus bonariensis',c:'#2030a0'},{z:'大马哈鱼鸥',e:'Kelp Gull',la:-40,lo:-65,d:'南美最大鸥',s:'Larus dominicanus',c:'#f0f0f0'},
+// ── EXPANDED OCEANIA ─────────────────────────────────────────────────────────
+{z:'澳洲鸸鹋',e:'Emu',la:-26,lo:132,d:'澳大利亚国鸟无翅奔跑',s:'Dromaius novaehollandiae',c:'#504030'},{z:'鸸鹋鸸鹋',e:'Southern Cassowary',la:-17,lo:146,d:'世界危险鸟类能踢死人',s:'Casuarius casuarius',c:'#102030'},{z:'澳洲鹤',e:'Brolga',la:-20,lo:140,d:'澳洲舞鹤求偶起舞',s:'Antigone rubicunda',c:'#d0d0c0'},{z:'澳洲秧鸡',e:'Buff-banded Rail',la:-33,lo:150,d:'棕色横纹湿地秧鸡',s:'Hypotaenidia philippensis',c:'#c09060'},{z:'澳洲鸻',e:'Masked Lapwing',la:-35,lo:148,d:'翅刺攻击入侵者',s:'Vanellus miles',c:'#c0a060'},{z:'澳洲反嘴鹬',e:'Red-necked Avocet',la:-30,lo:138,d:'橙颈弯嘴唯一澳洲反嘴鹬',s:'Recurvirostra novaehollandiae',c:'#e06030'},{z:'红颈反嘴鹬',e:'Banded Stilt',la:-32,lo:134,d:'胸带似围兜',s:'Cladorhynchus leucocephalus',c:'#f0f0f0'},{z:'澳洲涉禽',e:'Black-fronted Dotterel',la:-28,lo:142,d:'黑额Y形胸斑',s:'Elseyornis melanops',c:'#c09060'},{z:'澳洲琵鹭',e:'Royal Spoonbill',la:-33,lo:148,d:'澳洲白色琵鹭',s:'Platalea regia',c:'#f0f0f0'},{z:'黄嘴琵鹭',e:'Yellow-billed Spoonbill',la:-28,lo:138,d:'黄嘴版澳洲琵鹭',s:'Platalea flavipes',c:'#f0e0c0'},{z:'澳洲鹈鹕',e:'Australian Pelican',la:-30,lo:140,d:'最长嘴鸟类之一',s:'Pelecanus conspicillatus',c:'#f0f0f0'},{z:'苍鸬鹚',e:'Little Pied Cormorant',la:-30,lo:148,d:'澳洲最小鸬鹚',s:'Microcarbo melanoleucos',c:'#303030'},{z:'大鸬鹚',e:'Great Cormorant',la:-32,lo:150,d:'澳洲大型黑色鸬鹚',s:'Phalacrocorax carbo',c:'#202020'},{z:'澳洲白鹭',e:'Plumed Egret',la:-25,lo:148,d:'繁殖期蓑羽如丝',s:'Ardea plumifera',c:'#f0f0f0'},{z:'澳洲夜鹭',e:'Nankeen Night Heron',la:-30,lo:152,d:'金色背部夜行猎手',s:'Nycticorax caledonicus',c:'#c09040'},{z:'澳洲红嘴鹮',e:'Straw-necked Ibis',la:-28,lo:138,d:'颈部稻草黄色',s:'Threskiornis spinicollis',c:'#c0c0a0'},{z:'澳洲白鹮',e:'Australian White Ibis',la:-33,lo:150,d:'城市垃圾桶鸟',s:'Threskiornis molucca',c:'#f0f0f0'},{z:'楔尾雕',e:'Wedge-tailed Eagle',la:-28,lo:132,d:'澳洲最大猛禽翼展2.3米',s:'Aquila audax',c:'#402010'},{z:'灰隼',e:'Australian Hobby',la:-28,lo:140,d:'小型高速猎鸟隼',s:'Falco longipennis',c:'#506080'},{z:'褐隼',e:'Brown Falcon',la:-28,lo:140,d:'澳洲最常见隼',s:'Falco berigora',c:'#904030'},{z:'澳洲小隼',e:'Nankeen Kestrel',la:-30,lo:142,d:'悬停猎鼠澳洲常见',s:'Falco cenchroides',c:'#c07040'},{z:'红背鹦鹉',e:'Australian King Parrot',la:-35,lo:148,d:'雄鸟全红身体',s:'Alisterus scapularis',c:'#c02020'},{z:'南方草地鹦鹉',e:'Eastern Rosella',la:-37,lo:146,d:'红头黄白彩虹鹦鹉',s:'Platycercus eximius',c:'#c02020'},{z:'猩红胸鹦鹉',e:'Crimson Rosella',la:-36,lo:148,d:'深红蓝翅澳洲鹦鹉',s:'Platycercus elegans',c:'#c02020'},{z:'澳洲长尾鹦鹉',e:'Bourke\'s Parrot',la:-27,lo:138,d:'粉蓝色沙漠小鹦鹉',s:'Neopsephotus bourkii',c:'#c080c0'},{z:'澳洲凤头鹦鹉',e:'Sulphur-crested Cockatoo',la:-33,lo:150,d:'白冠黄鸡蛋般吵闹',s:'Cacatua galerita',c:'#f0f0c0'},{z:'粉红凤头鹦鹉',e:'Galah',la:-28,lo:133,d:'粉红灰配色城市鸦',s:'Eolophus roseicapilla',c:'#f060a0'},{z:'小葵花凤头鹦鹉',e:'Little Corella',la:-28,lo:130,d:'白色小型凤头',s:'Cacatua sanguinea',c:'#f0f0f0'},{z:'树栖凤头鹦鹉',e:'Long-billed Corella',la:-37,lo:143,d:'嘴超长凤头鹦鹉',s:'Cacatua tenuirostris',c:'#f0f0f0'},{z:'暗色凤头鹦鹉',e:'Yellow-tailed Black Cockatoo',la:-37,lo:148,d:'尾有黄斑大型黑凤头',s:'Calyptorhynchus funereus',c:'#303020'},{z:'红尾凤头鹦鹉',e:'Red-tailed Black Cockatoo',la:-22,lo:132,d:'雄鸟尾羽鲜红',s:'Calyptorhynchus banksii',c:'#c02020'},{z:'虎皮鹦鹉',e:'Budgerigar',la:-25,lo:135,d:'澳洲野生群飞壮观',s:'Melopsittacus undulatus',c:'#50a030'},{z:'澳洲地鹦鹉',e:'Ground Parrot',la:-37,lo:148,d:'濒危地栖鹦鹉',s:'Pezoporus wallicus',c:'#50a030'},{z:'澳洲笑鸿鹄',e:'Laughing Kookaburra',la:-35,lo:150,d:'叫声大笑澳洲闹钟',s:'Dacelo novaeguineae',c:'#907060'},{z:'蓝翅笑鸿鹄',e:'Blue-winged Kookaburra',la:-18,lo:130,d:'北部蓝翅版笑鸿鹄',s:'Dacelo leachii',c:'#6090c0'},{z:'红腰翠鸟',e:'Red-backed Kingfisher',la:-25,lo:134,d:'沙漠栗背翠鸟',s:'Todiramphus pyrrhopygius',c:'#c06030'},{z:'澳洲翡翠',e:'Sacred Kingfisher',la:-28,lo:148,d:'蓝绿圣翡翠',s:'Todiramphus sanctus',c:'#20a060'},{z:'澳洲伯劳',e:'Grey Butcherbird',la:-28,lo:148,d:'灰白猎手叫声悦耳',s:'Cracticus torquatus',c:'#808080'},{z:'澳洲喜鹊',e:'Australian Magpie',la:-33,lo:150,d:'黑白歌鸟攻击行人',s:'Gymnorhina tibicen',c:'#202020'},{z:'银眼澳洲乌鸦',e:'Australian Raven',la:-33,lo:148,d:'白眼乌鸦叫声悲凉',s:'Corvus coronoides',c:'#202020'},{z:'澳洲伞鸟',e:'Spangled Drongo',la:-18,lo:138,d:'叉尾金属蓝黑色',s:'Dicrurus bracteatus',c:'#202030'},{z:'黑背钟鹊',e:'Pied Currawong',la:-33,lo:150,d:'黑白长尾喜欢果实',s:'Strepera graculina',c:'#202020'},{z:'长冠鸟',e:'Bowerbird',la:-20,lo:148,d:'建造复杂求偶亭',s:'Amblyornis macgregoriae',c:'#806040'},{z:'缎蓝园丁鸟',e:'Satin Bowerbird',la:-33,lo:150,d:'收集蓝色物品求偶',s:'Ptilonorhynchus violaceus',c:'#202050'},{z:'超级琴鸟',e:'Superb Lyrebird',la:-37,lo:148,d:'完美模仿电锯声和相机声',s:'Menura novaehollandiae',c:'#806050'},{z:'维多利亚皇冠鸽',e:'Victoria Crowned Pigeon',la:-5,lo:142,d:'世界最大鸽子皇冠',s:'Goura victoria',c:'#6060c0'},{z:'新几内亚彩鸮',e:'Papuan Hawk-Owl',la:-5,lo:142,d:'巴布亚特有彩色鸮',s:'Uroglaux dimorpha',c:'#905030'},{z:'马来王极乐鸟',e:'King Bird-of-paradise',la:-5,lo:138,d:'最小极乐鸟最华丽',s:'Cicinnurus regius',c:'#c02020'},{z:'华美极乐鸟',e:'Magnificent Bird-of-paradise',la:-6,lo:135,d:'求偶展示折叠羽扇',s:'Diphyllodes magnificus',c:'#40a020'},{z:'十二线极乐鸟',e:'Twelve-wired Bird-of-paradise',la:-3,lo:134,d:'12根线状羽扫雌鸟',s:'Seleucidis melanoleucus',c:'#e0c020'},{z:'帕拉提极乐鸟',e:'Raggiana Bird-of-paradise',la:-8,lo:146,d:'巴布亚新几内亚国鸟',s:'Paradisaea raggiana',c:'#c02020'},{z:'金鸟',e:'Western Parotia',la:-4,lo:134,d:'六线六羽华丽求偶',s:'Parotia sefilata',c:'#202020'},{z:'新西兰鹰',e:'New Zealand Falcon',la:-42,lo:172,d:'新西兰唯一现存猛禽',s:'Falco novaeseelandiae',c:'#604030'},{z:'啄羊鹦鹉',e:'Kea',la:-44,lo:170,d:'世界唯一高山鹦鹉会破坏车',s:'Nestor notabilis',c:'#608030'},{z:'鸮鹦鹉',e:'Kakapo',la:-46,lo:168,d:'世界最重鹦鹉不会飞',s:'Strigops habroptilus',c:'#60a040'},{z:'蓝企鹅',e:'Little Blue Penguin',la:-38,lo:175,d:'世界最小企鹅',s:'Eudyptula minor',c:'#303050'},{z:'黄眼企鹅',e:'Yellow-eyed Penguin',la:-46,lo:170,d:'新西兰特有最稀有企鹅',s:'Megadyptes antipodes',c:'#e0c020'},{z:'凤冠企鹅',e:'Fiordland Penguin',la:-44,lo:167,d:'峡湾林中繁殖',s:'Eudyptes pachyrhynchus',c:'#e0c030'},
+// ── EXPANDED ARCTIC & ANTARCTIC ──────────────────────────────────────────────
+{z:'白额燕鸥',e:'Forster\'s Tern',la:66,lo:-30,d:'北极清洁飞翔者',s:'Sterna forsteri',c:'#f0f0f0'},{z:'黑嘴端燕鸥',e:'Common Tern',la:66,lo:10,d:'北极燕鸥表亲',s:'Sterna hirundo',c:'#f0f0e0'},{z:'白色海鸥',e:'Ivory Gull',la:78,lo:20,d:'极北纯白冰上精灵',s:'Pagophila eburnea',c:'#f8f8f8'},{z:'楔尾鸥',e:'Ross\'s Gull',la:76,lo:180,d:'粉红胸北极稀有鸥',s:'Rhodostethia rosea',c:'#f0d0d0'},{z:'北极三趾鸥',e:'Black-legged Kittiwake',la:70,lo:-10,d:'悬崖边筑巢海鸥',s:'Rissa tridactyla',c:'#f0f0e0'},{z:'大海雀',e:'Great Auk (extinct)',la:65,lo:-15,d:'已灭绝无法飞行北极燕',s:'Pinguinus impennis',c:'#202020'},{z:'刀嘴海雀',e:'Razorbill',la:62,lo:-25,d:'黑白刀形嘴',s:'Alca torda',c:'#202020'},{z:'小海雀',e:'Little Auk',la:73,lo:20,d:'北极最小海雀鸟',s:'Alle alle',c:'#202020'},{z:'须海鹦',e:'Tufted Puffin',la:54,lo:-165,d:'头部金色耳羽夏季',s:'Fratercula cirrhata',c:'#202020'},{z:'角海鹦',e:'Horned Puffin',la:60,lo:-165,d:'角状突起橙嘴北太平洋',s:'Fratercula corniculata',c:'#202020'},{z:'大贼鸥',e:'South Polar Skua',la:-70,lo:-60,d:'南极海盗鸟',s:'Stercorarius maccormicki',c:'#604030'},{z:'麦哲伦企鹅',e:'Magellanic Penguin',la:-52,lo:-70,d:'胸部双黑带',s:'Spheniscus magellanicus',c:'#202020'},{z:'喀麦隆企鹅',e:'Gentoo Penguin',la:-55,lo:-35,d:'游速最快企鹅36km/h',s:'Pygoscelis papua',c:'#202020'},{z:'帽带企鹅',e:'Chinstrap Penguin',la:-62,lo:-55,d:'下颌黑线如帽带',s:'Pygoscelis antarcticus',c:'#202020'},{z:'马氏企鹅',e:'Macaroni Penguin',la:-55,lo:-38,d:'黄眉毛如马戏团',s:'Eudyptes chrysolophus',c:'#e0b020'},{z:'南极雪燕',e:'Snow Petrel',la:-75,lo:10,d:'南极最白的鸟',s:'Pagodroma nivea',c:'#f8f8f8'},{z:'南极海燕',e:'Antarctic Petrel',la:-68,lo:0,d:'棕白配色南极海燕',s:'Thalassoica antarctica',c:'#d0b080'},{z:'巨型海燕',e:'Southern Giant Petrel',la:-55,lo:-40,d:'南极最大海燕如小信天翁',s:'Macronectes giganteus',c:'#d0d0d0'},{z:'大翅目鲸',e:'Cape Petrel',la:-55,lo:20,d:'黑白格纹最美海燕',s:'Daption capense',c:'#303030'},{z:'黑眉信天翁',e:'Black-browed Albatross',la:-52,lo:-58,d:'黑眉优雅南大洋',s:'Thalassarche melanophris',c:'#f0f0f0'},{z:'皇家信天翁',e:'Royal Albatross',la:-52,lo:170,d:'最大信天翁之一',s:'Diomedea epomophora',c:'#f0f0f0'},{z:'光背信天翁',e:'Shy Albatross',la:-48,lo:148,d:'澳洲亚南极信天翁',s:'Thalassarche cauta',c:'#f0f0f0'},{z:'北方海鹦',e:'Atlantic Puffin',la:63,lo:-30,d:'北大西洋海上小丑',s:'Fratercula arctica',c:'#f0f0f0'},{z:'崖海鸦',e:'Common Guillemot',la:60,lo:-5,d:'北海殖民地集群繁殖',s:'Uria aalge',c:'#202030'}
+];
+
+// Migration routes
+const ROUTES=[{f:{la:66,lo:-20},t:{la:-65,lo:60},c:'#60a0e0'},{f:{la:65,lo:170},t:{la:-37,lo:175},c:'#e09050'},{f:{la:55,lo:37},t:{la:-25,lo:28},c:'#8060c0'},{f:{la:50,lo:20},t:{la:-2,lo:32},c:'#c0c0c0'},{f:{la:42,lo:-85},t:{la:18,lo:-88},c:'#40c040'},{f:{la:64,lo:-20},t:{la:53,lo:-1},c:'#e0d080'},{f:{la:55,lo:130},t:{la:33,lo:129},c:'#e08080'},{f:{la:-55,lo:-30},t:{la:-45,lo:50},c:'#b0b0d0'},{f:{la:55,lo:-6},t:{la:12,lo:-2},c:'#607090'},{f:{la:58,lo:-3},t:{la:12,lo:-2},c:'#a09070'},{f:{la:50,lo:120},t:{la:-20,lo:28},c:'#c06060'}];
+const arcG=new THREE.Group();
+ROUTES.forEach(r=>{const f=ll2v(r.f.la,r.f.lo,R+.02),t=ll2v(r.t.la,r.t.lo,R+.02);const mid=f.clone().add(t).multiplyScalar(.5);mid.normalize().multiplyScalar(R+f.distanceTo(t)*.15);const curve=new THREE.QuadraticBezierCurve3(f,mid,t);const pts=curve.getPoints(80);arcG.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color:new THREE.Color(r.c),transparent:true,opacity:.3})));});
+scene.add(arcG);
+
+// Bird markers — placeholder dots replaced by real bird photos as they load
+const mG=new THREE.Group(),markers=[],origP=[];
+function makeDotTex(color){
+  const cv=document.createElement('canvas');cv.width=64;cv.height=64;
+  const x=cv.getContext('2d');
+  const gr=x.createRadialGradient(32,32,2,32,32,28);
+  gr.addColorStop(0,'rgba(255,255,255,0.95)');
+  gr.addColorStop(0.4,color+'cc');
+  gr.addColorStop(1,color+'00');
+  x.fillStyle=gr;x.beginPath();x.arc(32,32,30,0,Math.PI*2);x.fill();
+  return new THREE.CanvasTexture(cv);
+}
+function makeBirdTex(img){
+  // Feed the HTMLImageElement directly to Three.js — no intermediate canvas,
+  // so there is zero risk of a "tainted canvas" SecurityError in WebGL.
+  const tex=new THREE.Texture(img);
+  tex.needsUpdate=true;
+  return tex;
+}
+// Stagger image loads to avoid hammering the API (20 at a time, 400ms apart)
+let loadQueue=[];
+B.forEach((b,i)=>{
+  // Snap bird to nearest free 10° grid cell so each sits in its own box
+  const cell=assignCell(b.la,b.lo);
+  const p=ll2v(cell.la,cell.lo,R+.032);
+  const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:makeDotTex(b.c),transparent:true,depthTest:true,sizeAttenuation:true}));
+  spr.position.copy(p);spr.scale.set(.15,.15,1);spr.userData={bird:b,idx:i,cell};
+  mG.add(spr);markers.push(spr);origP.push(p.clone());
+  loadQueue.push({spr,b});
+});
+// Load real bird photos with staggered delay
+// Uses fetch→blob→ObjectURL so the image is never "tainted" for WebGL texImage2D
+async function applyBirdPhoto(spr,url){
+  try{
+    const resp=await fetch(url);
+    if(!resp.ok)return;
+    const blob=await resp.blob();
+    const objUrl=URL.createObjectURL(blob);
+    const img=new Image();
+    img.onload=()=>{
+      spr.material.map=makeBirdTex(img);
+      spr.material.needsUpdate=true;
+      spr.scale.set(.22,.22,1);
+      URL.revokeObjectURL(objUrl); // free memory
+    };
+    img.onerror=()=>URL.revokeObjectURL(objUrl);
+    img.src=objUrl;
+  }catch{}
+}
+loadQueue.forEach(({spr,b},i)=>{
+  // 3 birds per batch, 700ms between batches — respects iNaturalist rate limits (~250 req/min)
+  setTimeout(()=>{
+    fetchBirdImgFast(b.s).then(url=>{if(url)applyBirdPhoto(spr,url);});
+  },Math.floor(i/3)*700);
+});
+scene.add(mG);
+document.getElementById('cnt').textContent=`${B.length} 鸟类`;
+
+// Interaction
+const cv2=renderer.domElement;
+cv2.addEventListener('pointerdown',e=>{S.mouseDown=true;S.dragging=false;S.pmx=e.clientX;S.pmy=e.clientY;document.body.classList.add('dragging');});
+window.addEventListener('pointermove',e=>{S.mx=(e.clientX/innerWidth)*2-1;S.my=-(e.clientY/innerHeight)*2+1;if(S.mouseDown){const dx=e.clientX-S.pmx,dy=e.clientY-S.pmy;if(Math.abs(dx)+Math.abs(dy)>2)S.dragging=true;S.tRY-=dx*.003;S.tRX+=dy*.003;S.tRX=Math.max(-1.45,Math.min(1.45,S.tRX));S.pmx=e.clientX;S.pmy=e.clientY;}doHover(e);});
+window.addEventListener('pointerup',e=>{if(!S.dragging)doClick(e);S.mouseDown=false;S.dragging=false;document.body.classList.remove('dragging');});
+cv2.addEventListener('wheel',e=>{e.preventDefault();S.tDist+=e.deltaY*.006;S.tDist=Math.max(R*1.25,Math.min(R*5,S.tDist));},{passive:false});
+let ltd=0;cv2.addEventListener('touchstart',e=>{if(e.touches.length===2)ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);},{passive:true});
+cv2.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);S.tDist-=(d-ltd)*.015;S.tDist=Math.max(R*1.25,Math.min(R*5,S.tDist));ltd=d;}},{passive:true});
+
+function doHover(e){_m.set(S.mx,S.my);ray.setFromCamera(_m,camera);const h=ray.intersectObjects(markers);const tip=document.getElementById('tip');if(h.length>0&&h[0].object.visible){const b=h[0].object.userData.bird;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-8)+'px';tip.querySelector('.z').textContent=b.z;tip.querySelector('.e').textContent=b.e;cv2.style.cursor='pointer';if(S.hovered&&S.hovered!==h[0].object)S.hovered.scale.set(.2,.2,1);S.hovered=h[0].object;}else{tip.style.display='none';if(!S.mouseDown)cv2.style.cursor='grab';if(S.hovered){S.hovered.scale.set(.2,.2,1);S.hovered=null;}}}
+function doClick(e){_m.set((e.clientX/innerWidth)*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(_m,camera);const h=ray.intersectObjects(markers);if(h.length>0&&h[0].object.visible)showPopup(h[0].object.userData.bird);}
+
+// Placeholder canvas for when no photo is found
+function makePlaceholder(zh,en,color){const c=document.createElement('canvas');c.width=500;c.height=300;const x=c.getContext('2d');const g=x.createLinearGradient(0,0,500,300);g.addColorStop(0,'#141210');g.addColorStop(1,'#0a0908');x.fillStyle=g;x.fillRect(0,0,500,300);// decorative ring
+x.strokeStyle='rgba(200,184,138,0.07)';x.lineWidth=1.5;x.beginPath();x.arc(250,130,80,0,Math.PI*2);x.stroke();x.beginPath();x.arc(250,130,55,0,Math.PI*2);x.stroke();// emoji
+x.font='68px serif';x.textAlign='center';x.textBaseline='middle';x.globalAlpha=.25;x.fillText('🐦',250,128);x.globalAlpha=1;// accent dot
+x.fillStyle=color||'#c8b88a';x.beginPath();x.arc(250,128,8,0,Math.PI*2);x.fill();// chinese name
+x.fillStyle='rgba(232,216,168,0.88)';x.font='bold 21px "Noto Serif SC",serif';x.fillText(zh||'',250,212);// english name
+x.fillStyle='rgba(140,120,90,0.65)';x.font='italic 12px "Noto Sans SC",sans-serif';x.fillText(en||'',250,234);// border
+x.strokeStyle='rgba(200,184,138,0.07)';x.lineWidth=1;x.strokeRect(12,12,476,276);return c.toDataURL();}
+
+// Cache to avoid re-fetching the same species
+const _imgCache=new Map();
+
+// FAST fetch: iNaturalist only — used for background sprite loading (no Wikipedia to avoid 429)
+async function fetchBirdImgFast(sci){
+  if(_imgCache.has(sci))return _imgCache.get(sci);
+  const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
+  try{
+    const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});
+    if(!r.ok)return null;
+    const d=await r.json();
+    const photo=d.results?.[0]?.default_photo;
+    if(photo){
+      const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);
+      if(url){_imgCache.set(sci,url);return url;}
+    }
+  }catch{}
+  _imgCache.set(sci,null);
+  return null;
+}
+
+// FULL fetch: Wikipedia first, iNaturalist fallback — used only in popup (one request at a time)
+async function fetchBirdImg(sci,en){
+  if(_imgCache.has(sci))return _imgCache.get(sci);
+  const sig=AbortSignal.timeout?AbortSignal.timeout(6000):undefined;
+  // 1. iNaturalist (fast, reliable, no rate-limit issues)
+  try{const r=await fetch(`https://api.inaturalist.org/v1/taxa?q=${encodeURIComponent(sci)}&per_page=1&rank=species`,{signal:sig});if(r.ok){const d=await r.json();const photo=d.results?.[0]?.default_photo;if(photo){const url=photo.medium_url||photo.url||(photo.square_url?photo.square_url.replace('/square.','/medium.'):null);if(url){_imgCache.set(sci,url);return url;}}}}catch{}
+  // 2. Wikipedia by scientific name (fallback — can hit 429 under heavy load)
+  try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(sci)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_imgCache.set(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
+  // 3. Wikipedia by English name
+  try{const r=await fetch(`https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(en)}&prop=pageimages&pithumbsize=600&format=json&origin=*`,{signal:sig});if(r.ok){const d=await r.json();const pg=Object.values(d.query.pages)[0];if(pg?.thumbnail?.source){_imgCache.set(sci,pg.thumbnail.source);return pg.thumbnail.source;}}}catch{}
+  _imgCache.set(sci,null);
+  return null;
+}
+
+// Popup
+async function showPopup(bird){S.bird=bird;const popup=document.getElementById('popup'),img=document.getElementById('pop-img'),spin=document.getElementById('img-spin');
+// Set text
+document.getElementById('pop-zh').textContent=bird.z;document.getElementById('pop-en').textContent=bird.e;document.getElementById('pop-desc').textContent=bird.d;document.getElementById('pop-sci').textContent=bird.s;
+// Show placeholder immediately — no black box
+img.src=makePlaceholder(bird.z,bird.e,bird.c);img.style.display='block';spin.style.display='block';popup.style.display='block';
+// Async load real photo
+fetchBirdImg(bird.s,bird.e).then(url=>{
+  if(!url){spin.style.display='none';return;}
+  // Popup <img> never goes into WebGL — no crossOrigin needed, just set src directly
+  if(S.bird===bird){img.src=url;img.style.display='block';}
+  spin.style.display='none';
+}).catch(()=>{spin.style.display='none';});
+if(!S.muted)playSound(bird);}
+document.getElementById('pop-close').onclick=()=>{document.getElementById('popup').style.display='none';stopSound();S.bird=null;};
+document.getElementById('pop-play').onclick=()=>{if(S.bird)playSound(S.bird);};
+document.getElementById('pop-wiki').onclick=()=>{if(S.bird)window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(S.bird.s)}`,'_blank');};
+async function playSound(bird){
+  stopSound();
+  const btn=document.getElementById('pop-play');
+  btn.classList.add('playing');
+  btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> 播放中...';
+  const resetBtn=(label='聆听鸟鸣')=>{btn.classList.remove('playing');btn.innerHTML=`<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> ${label}`;};
+
+  // From file:// the xeno-canto API fetch is blocked by CORS — show message only, never open new tab
+  const isFileOrigin=location.protocol==='file:';
+  if(isFileOrigin){
+    resetBtn('请用服务器打开');
+    btn.title='请通过 http://localhost:8765 访问此文件以启用鸟鸣播放功能';
+    return;
+  }
+
+  try{
+    // Strategy 1: query by scientific name, no quality filter (avoids 404)
+    let rec=null;
+    const queries=[
+      `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.s)}`,
+      `https://xeno-canto.org/api/2/recordings?query=${encodeURIComponent(bird.e)}`,
+      `https://xeno-canto.org/api/2/recordings?query=sp:${encodeURIComponent(bird.s.split(' ').slice(0,2).join('+'))}`,
+    ];
+    for(const url of queries){
+      try{
+        const r=await fetch(url);
+        if(!r.ok)continue;
+        const d=await r.json();
+        if(d.recordings?.length){rec=d.recordings[0];break;}
+      }catch{}
+    }
+
+    if(!rec){resetBtn('暂无录音');return;}
+
+    // Build a clean https audio URL from the recording
+    // xeno-canto file field can be: "//xeno-canto.org/xxx/download" or "https://..." or relative
+    let audioUrl=rec.file||'';
+    if(audioUrl.startsWith('//'))audioUrl='https:'+audioUrl;
+    else if(audioUrl.startsWith('/'))audioUrl='https://xeno-canto.org'+audioUrl;
+    else if(!audioUrl.startsWith('http'))audioUrl=`https://xeno-canto.org/${rec.id}/download`;
+    // Fallback: construct download URL from recording ID
+    if(!audioUrl)audioUrl=`https://xeno-canto.org/${rec.id}/download`;
+
+    const a=new Audio();
+    // Do NOT set crossOrigin — Xeno-canto CDN audio files don't send CORS headers
+    a.volume=.55;
+    a.src=audioUrl;
+    S.audio=a;
+    const ind=document.getElementById('audio-ind');
+    document.getElementById('aud-name').textContent=bird.z;
+    ind.style.display='flex';
+    a.play().catch(err=>{console.warn('Audio play failed:',err.message);resetBtn('播放失败');ind.style.display='none';});
+    a.onerror=()=>{resetBtn('暂无录音');ind.style.display='none';};
+    a.onended=()=>{ind.style.display='none';resetBtn()};
+  }catch(err){
+    console.log('Audio error:',err);
+    resetBtn('加载失败');
+  }
+}
+function stopSound(){if(S.audio){S.audio.pause();S.audio.currentTime=0;S.audio=null;}document.getElementById('audio-ind').style.display='none';const btn=document.getElementById('pop-play');btn.classList.remove('playing');btn.innerHTML='<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21"/></svg> 聆听鸟鸣';}
+
+// Region buttons
+const rgnDiv=document.getElementById('rgn');
+Object.entries(REGIONS).forEach(([k,v])=>{const btn=document.createElement('button');btn.textContent=v.label;btn.dataset.r=k;if(k==='global')btn.classList.add('on');btn.onclick=()=>{rgnDiv.querySelectorAll('button').forEach(b=>b.classList.remove('on'));btn.classList.add('on');const rr=REGIONS[k],phi=(90-rr.lat)*Math.PI/180;S.tRX=Math.PI/2-phi;S.tRY=-rr.lng*Math.PI/180;S.tDist=R*rr.alt;if(k==='global')markers.forEach(m=>{m.visible=true;});else{const bd=RBOUNDS[k];markers.forEach((m,i)=>{const b=B[i];m.visible=b.la>=bd.la&&b.la<=bd.La&&b.lo>=bd.lo&&b.lo<=bd.Lo;});}S.region=k;};rgnDiv.appendChild(btn);});
+
+// Function buttons
+document.getElementById('ck-grid').onchange=e=>{gridG.visible=e.target.checked;};
+document.getElementById('ck-routes').onchange=e=>{arcG.visible=e.target.checked;};
+// Story mode: auto-tour through birds one by one with popup
+let storyTimer=null,storyIdx=0;
+document.getElementById('ck-story').onchange=function(){
+  if(this.checked){
+    S.autoRotate=false;
+    document.getElementById('b-rotate').classList.remove('on');
+    storyIdx=0;
+    function storyStep(){
+      const b=B[storyIdx%B.length];
+      // Fly camera to bird location
+      const phi=(90-b.la)*Math.PI/180;
+      S.tRX=Math.PI/2-phi;S.tRY=-b.lo*Math.PI/180;S.tDist=R*1.6;
+      showPopup(b);
+      storyIdx++;
+      storyTimer=setTimeout(storyStep,5000);
+    }
+    storyStep();
+  }else{
+    clearTimeout(storyTimer);storyTimer=null;
+    document.getElementById('popup').style.display='none';
+    stopSound();S.bird=null;
+  }
+};
+document.getElementById('b-scatter').onclick=function(){S.scattered=!S.scattered;this.classList.toggle('on',S.scattered);markers.forEach((m,i)=>{if(S.scattered){const dir=origP[i].clone().normalize();const d=4+Math.random()*10;const off=new THREE.Vector3((Math.random()-.5)*5,(Math.random()-.5)*5,(Math.random()-.5)*5);m.userData.tgt=dir.multiplyScalar(d).add(off);m.userData.spd=.012+Math.random()*.025;}else{m.userData.tgt=origP[i].clone();m.userData.spd=.025+Math.random()*.02;}});};
+document.getElementById('b-migrate').onclick=function(){S.migrating=!S.migrating;this.classList.toggle('on',S.migrating);};
+document.getElementById('b-mute').onclick=function(){S.muted=!S.muted;this.classList.toggle('on',S.muted);if(S.muted)stopSound();};
+document.getElementById('b-rotate').onclick=function(){S.autoRotate=!S.autoRotate;this.classList.toggle('on',S.autoRotate);};
+
+// Resize
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+
+// Animate
+function animate(){requestAnimationFrame(animate);const t=clock.getElapsedTime();
+if(S.autoRotate&&!S.mouseDown)S.tRY-=.0005;
+S.rY+=(S.tRY-S.rY)*.055;S.rX+=(S.tRX-S.rX)*.055;S.dist+=(S.tDist-S.dist)*.055;
+camera.position.x=S.dist*Math.cos(S.rX)*Math.sin(S.rY);camera.position.y=S.dist*Math.sin(S.rX);camera.position.z=S.dist*Math.cos(S.rX)*Math.cos(S.rY);camera.lookAt(0,0,0);
+const sa=t*.015;sun.position.set(-25*Math.cos(sa),8+3*Math.sin(sa*.3),18*Math.sin(sa));
+if(earth.material.uniforms)earth.material.uniforms.uSun.value.copy(sun.position).normalize();
+if(cloudMesh)cloudMesh.rotation.y+=.00006;
+markers.forEach(m=>{if(m.userData.tgt){m.position.lerp(m.userData.tgt,m.userData.spd);if(m.position.distanceTo(m.userData.tgt)<.005)m.userData.tgt=null;}});
+if(S.hovered){const s=.26+.04*Math.sin(t*5);S.hovered.scale.set(s,s,1);}
+if(S.migrating)arcG.children.forEach((a,i)=>{a.material.opacity=.15+.35*Math.abs(Math.sin(t*.7+i*.4));});
+renderer.render(scene,camera);}
+
+document.getElementById('lbar').style.width='100%';
+// Show file:// warning banner if not served over http
+if(location.protocol==='file:')document.getElementById('file-warn').style.display='block';
+setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('done');setTimeout(()=>{ld.style.display='none';},1100);},600);
+animate();
+</script>
+</body>
+</html>
