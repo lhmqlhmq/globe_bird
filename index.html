@@ -748,13 +748,16 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
               alphaTest:goodCutout?0.25:0.1,
               depthTest:true,sizeAttenuation:true
             });
-            if(spr.material.map)spr.material.map.dispose();
-            spr.material.dispose(); spr.material=mat;
+            // NO dispose — just replace material directly to rule out dispose side-effects
+            spr.material=mat;
             const h=0.6; // DEBUG: large scale to confirm photos render
             spr.scale.set(h*aspect,h,1);
             if(!window._photoCount)window._photoCount=0;
             window._photoCount++;
-            if(window._photoCount<=5)console.log('[applyPhoto] #'+window._photoCount+' frac='+removedFrac.toFixed(3)+' good='+goodCutout+' scale='+(h*aspect).toFixed(2)+'x'+h);
+            if(window._photoCount<=5){
+              console.log('[applyPhoto] #'+window._photoCount+' frac='+removedFrac.toFixed(3)+' scale='+(h*aspect).toFixed(2)+'x'+h+' matSame='+(spr.material===mat)+' isCanvas='+spr.material.map.isCanvasTexture);
+              window._testSpr=spr; // capture sprite for console inspection
+            }
           }catch(e){console.error('[applyPhoto]',e);}
           URL.revokeObjectURL(blobUrl);
         };
