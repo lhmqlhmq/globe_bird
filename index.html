@@ -698,21 +698,29 @@ setTimeout(()=>{const ld=document.getElementById('loading');ld.classList.add('do
   }
 
   // ── Lazy-load AI module (first call triggers ~5MB model download) ─────────
+  // removeBackground is a NAMED export (not default) from @imgly/background-removal
   const AI_URL='https://cdn.jsdelivr.net/npm/@imgly/background-removal@1.7.0/dist/index.mjs';
   let _aiMod=null, _aiProm=null;
   function loadAI(){
     if(_aiMod)return Promise.resolve(_aiMod);
     if(_aiProm)return _aiProm;
-    _aiProm=import(AI_URL).then(m=>{_aiMod=m;return m;}).catch(()=>null);
+    _aiProm=import(AI_URL).then(async m=>{
+      _aiMod=m;
+      // Pre-warm: download ONNX model files now so first bird processes fast
+      if(typeof m.preload==='function'){
+        m.preload({model:'isnet_quint8'}).catch(()=>{});
+      }
+      return m;
+    }).catch(()=>null);
     return _aiProm;
   }
 
   // ── Run AI background removal on a Blob ───────────────────────────────────
   async function aiRemoveBg(srcBlob){
     const mod=await loadAI(); if(!mod)throw new Error('no AI');
-    const fn=typeof mod.default==='function'?mod.default:
-              typeof mod.removeBackground==='function'?mod.removeBackground:null;
-    if(!fn)throw new Error('no fn');
+    // Named export: mod.removeBackground (NOT mod.default)
+    const fn=mod.removeBackground;
+    if(typeof fn!=='function')throw new Error('no removeBackground fn');
     return fn(srcBlob,{
       model:'isnet_quint8',
       output:{format:'image/png',quality:0.92}
