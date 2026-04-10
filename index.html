@@ -874,32 +874,40 @@ self.onmessage=async e=>{
     URL.revokeObjectURL(blobUrl);
   }
 
-  // ── Sequential queue with AI cap ────────────────────────────────────────
-  // AI processes one bird at a time in the worker (non-blocking for UI).
-  // Only the top MAX_AI camera-facing birds get AI; the rest use color-distance.
-  // IndexedDB cache means repeat visits are instant (<10ms per bird).
-  const MAX_AI=60; // top N most visible birds get AI treatment
+  // ── Two-pass queue ───────────────────────────────────────────────────────
+  // PASS 1 (instant): color-distance for ALL birds with cached URLs — fires
+  //   in parallel so every bird shows within a few seconds (no await).
+  // PASS 2 (progressive): AI worker upgrades top MAX_AI birds one at a time
+  //   (awaited sequentially). IDB cache makes repeat visits instant (<10ms).
+  const MAX_AI=30;
   const q=markers.map((spr,i)=>({spr,b:B[i],url:_lsCache[B[i].s]||null}));
   q.sort((a,b)=>{
     if(!!a.url!==!!b.url)return a.url?-1:1;
     return b.spr.position.dot(camera.position)-a.spr.position.dot(camera.position);
   });
 
-  let qi=0,aiUsed=0;
-  async function run(){
-    if(qi>=q.length)return;
-    const item=q[qi++];
-    const useAI=aiUsed<MAX_AI; if(useAI)aiUsed++;
+  setTimeout(()=>{
+    // ── Pass 1: color-distance for all cached birds, parallel, fire & forget ──
+    q.forEach(item=>{if(item.url)applyPhoto(item.spr,item.b,item.url,false);});
 
-    try{
-      const url=item.url||(await fetchBirdImg(item.b.s,item.b.e));
-      if(url)await applyPhoto(item.spr,item.b,url,useAI);
-    }catch{}
-
-    // Yield to UI thread, then process next bird
-    setTimeout(run, item.url?0:150);
-  }
-  setTimeout(run,1500); // start after globe renders
+    // ── Pass 2: sequential AI upgrade (+ fetch uncached URL birds) ────────────
+    let qi=0,aiUsed=0;
+    async function runAI(){
+      if(qi>=q.length)return;
+      const item=q[qi++];
+      const doAI=aiUsed<MAX_AI; if(doAI)aiUsed++;
+      try{
+        let url=item.url;
+        if(!url){
+          url=await fetchBirdImg(item.b.s,item.b.e).catch(()=>null);
+          if(url){_lsCache[item.b.s]=url; applyPhoto(item.spr,item.b,url,false);} // show immediately
+        }
+        if(url&&doAI) await applyPhoto(item.spr,item.b,url,true); // AI upgrade
+      }catch{}
+      setTimeout(runAI, item.url?0:150);
+    }
+    setTimeout(runAI,200); // slight delay so Pass 1 DOM updates land first
+  },1500);
 })();
 animate();
 </script>
