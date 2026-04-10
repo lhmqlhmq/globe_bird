@@ -60,11 +60,71 @@ canvas{display:block;width:100%;height:100%;position:fixed;inset:0}
 #fn button:hover{background:rgba(255,255,255,.08);color:#ccc}
 #fn button.on{background:rgba(200,184,138,.12);border-color:rgba(200,184,138,.2);color:#e8d8a8}
 #credits{position:fixed;bottom:5px;right:10px;font-size:.5rem;color:#333;z-index:5}
-#lang-btn{position:fixed;top:clamp(12px,2vh,20px);right:clamp(12px,2vw,20px);z-index:30;background:rgba(200,184,138,.1);border:1px solid rgba(200,184,138,.2);color:#c8b88a;font-size:.65rem;padding:5px 12px;border-radius:14px;cursor:pointer;letter-spacing:.08em;font-family:inherit;transition:all .2s}
+#lang-btn{position:fixed;top:clamp(12px,2vh,20px);right:clamp(12px,2vw,20px);z-index:30;background:rgba(200,184,138,.1);border:1px solid rgba(200,184,138,.2);color:#c8b88a;font-size:.65rem;padding:5px 12px;border-radius:14px;cursor:pointer;letter-spacing:.08em;font-family:inherit;transition:all .2s;min-width:44px;min-height:36px;display:flex;align-items:center;justify-content:center}
 #lang-btn:hover{background:rgba(200,184,138,.2);color:#e8d8a8}
 #file-warn{display:none;position:fixed;top:0;left:0;right:0;z-index:3000;background:rgba(180,90,0,.95);color:#fff;font-size:.78rem;text-align:center;padding:8px 16px;letter-spacing:.02em;line-height:1.5}
 #file-warn strong{color:#ffe066}
 #file-warn button{margin-left:14px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:2px 10px;border-radius:10px;cursor:pointer;font-size:.72rem}
+
+/* ── Mobile optimizations ─────────────────────────────── */
+@media (max-width:640px),(hover:none) and (pointer:coarse){
+  /* Bottom-sheet popup — full width, slides up from bottom edge */
+  #popup{
+    bottom:0!important;left:0!important;right:0!important;
+    transform:none!important;
+    width:100%!important;max-width:100%!important;
+    border-radius:20px 20px 0 0!important;
+    max-height:82svh;overflow-y:auto;
+    animation:popInMobile .3s cubic-bezier(.2,.9,.3,1)!important;
+  }
+  @keyframes popInMobile{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  /* Drag handle pill at top of sheet */
+  #popup::before{
+    content:'';display:block;width:40px;height:4px;
+    background:rgba(255,255,255,.18);border-radius:2px;
+    margin:10px auto 0;
+  }
+  #popup .img{height:200px}
+  #popup .info{padding:12px 16px 16px}
+  #popup .nz{font-size:1.15rem}
+  #popup .desc{font-size:.8rem;line-height:1.8}
+  #popup .acts button{padding:9px 16px;font-size:.76rem;min-height:40px}
+  #popup .x{top:14px;right:14px;width:30px;height:30px}
+
+  /* Region nav — horizontal scroll, no wrap */
+  #rgn{flex-wrap:nowrap!important;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding:0 16px;width:100%;justify-content:flex-start}
+  #rgn::-webkit-scrollbar{display:none}
+  #rgn button{flex-shrink:0;padding:7px 16px!important;font-size:.72rem!important;min-height:36px}
+
+  /* Function row — horizontal scroll */
+  #fn{flex-wrap:nowrap!important;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding:0 16px;width:100%;justify-content:flex-start}
+  #fn::-webkit-scrollbar{display:none}
+  #fn label{flex-shrink:0;padding:6px 10px!important;font-size:.72rem!important;min-height:36px}
+  #fn button{flex-shrink:0;padding:6px 14px!important;font-size:.72rem!important;min-height:36px}
+
+  /* Bottom controls — add safe-area padding so controls clear home bar */
+  #ctrls{padding-bottom:calc(env(safe-area-inset-bottom,0px) + 10px)!important;gap:6px}
+
+  /* Hide hover tooltip entirely on touch (it never fires usefully) */
+  #tip{display:none!important}
+
+  /* Slightly larger title on mobile */
+  #title h1{font-size:clamp(1rem,4vw,1.4rem)!important;letter-spacing:.3em}
+  #title .count{font-size:.68rem!important}
+
+  /* Audio indicator — move below lang btn to avoid overlap */
+  #audio-ind{right:unset;left:clamp(12px,2vw,20px);top:clamp(12px,2vh,20px)}
+
+  /* Lang btn — slightly taller touch target */
+  #lang-btn{min-height:40px;padding:8px 14px}
+
+  /* Credits hidden on small screens */
+  #credits{display:none}
+}
 </style>
 </head>
 <body>
@@ -93,8 +153,9 @@ const RBOUNDS={asia:{la:-15,La:72,lo:40,Lo:180},europe:{la:34,La:72,lo:-25,Lo:50
 const S={autoRotate:true,muted:false,scattered:false,migrating:false,gridOn:true,routesOn:true,mouseDown:false,dragging:false,mx:0,my:0,pmx:0,pmy:0,rY:0,rX:.35,tRY:0,tRX:.35,dist:R*2.6,tDist:R*2.6,bird:null,audio:null,hovered:null,region:'global'};
 
 const canvas=document.getElementById('c');
-const renderer=new THREE.WebGLRenderer({canvas,antialias:true,powerPreference:'high-performance'});
-renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,1.5)); // cap at 1.5 — pixel ratio 2 renders 4× pixels and kills frame rate
+const isMobile=('ontouchstart' in window||navigator.maxTouchPoints>1)||innerWidth<640;
+const renderer=new THREE.WebGLRenderer({canvas,antialias:!isMobile,powerPreference:isMobile?'default':'high-performance'});
+renderer.setSize(innerWidth,innerHeight);renderer.setPixelRatio(Math.min(devicePixelRatio,isMobile?1.0:1.5)); // mobile: cap at 1.0 for smooth 60fps; desktop: 1.5
 renderer.outputEncoding=THREE.sRGBEncoding;renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.1;
 const scene=new THREE.Scene();scene.background=new THREE.Color(0x050508);
 const camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,500);
@@ -447,12 +508,52 @@ const cntEl=document.getElementById('cnt');cntEl.textContent=`${B.length} 鸟类
 
 // Interaction
 const cv2=renderer.domElement;
-cv2.addEventListener('pointerdown',e=>{S.mouseDown=true;S.canvasDown=true;S.dragging=false;S.pmx=e.clientX;S.pmy=e.clientY;document.body.classList.add('dragging');});
-window.addEventListener('pointermove',e=>{S.mx=(e.clientX/innerWidth)*2-1;S.my=-(e.clientY/innerHeight)*2+1;if(S.mouseDown){const dx=e.clientX-S.pmx,dy=e.clientY-S.pmy;if(Math.abs(dx)+Math.abs(dy)>2)S.dragging=true;S.tRY-=dx*.003;S.tRX+=dy*.003;S.tRX=Math.max(-1.45,Math.min(1.45,S.tRX));S.pmx=e.clientX;S.pmy=e.clientY;}doHover(e);});
-window.addEventListener('pointerup',e=>{if(!S.dragging&&S.canvasDown)doClick(e);S.mouseDown=false;S.dragging=false;S.canvasDown=false;document.body.classList.remove('dragging');});
+const isTouchDevice=()=>('ontouchstart' in window||navigator.maxTouchPoints>1);
+// Track active touch count to prevent 2-finger pinch from registering as a tap
+let _activeTouches=0;
+cv2.addEventListener('pointerdown',e=>{
+  if(e.pointerType==='touch')_activeTouches++;
+  // Don't start a drag/click on the second finger of a pinch
+  if(e.pointerType==='touch'&&_activeTouches>1){S.mouseDown=false;return;}
+  S.mouseDown=true;S.canvasDown=true;S.dragging=false;S.pmx=e.clientX;S.pmy=e.clientY;
+  document.body.classList.add('dragging');
+});
+window.addEventListener('pointermove',e=>{
+  S.mx=(e.clientX/innerWidth)*2-1;S.my=-(e.clientY/innerHeight)*2+1;
+  if(S.mouseDown){
+    const dx=e.clientX-S.pmx,dy=e.clientY-S.pmy;
+    // Touch needs slightly more movement before switching to drag mode
+    const threshold=e.pointerType==='touch'?5:2;
+    if(Math.abs(dx)+Math.abs(dy)>threshold)S.dragging=true;
+    S.tRY-=dx*.003;S.tRX+=dy*.003;
+    S.tRX=Math.max(-1.45,Math.min(1.45,S.tRX));
+    S.pmx=e.clientX;S.pmy=e.clientY;
+  }
+  // No hover tooltip on touch devices
+  if(!isTouchDevice())doHover(e);
+});
+window.addEventListener('pointerup',e=>{
+  if(e.pointerType==='touch')_activeTouches=Math.max(0,_activeTouches-1);
+  // Only fire click if no other fingers are down (prevents pinch-end triggering a tap)
+  if(!S.dragging&&S.canvasDown&&_activeTouches===0)doClick(e);
+  S.mouseDown=false;S.dragging=false;S.canvasDown=false;
+  document.body.classList.remove('dragging');
+});
 cv2.addEventListener('wheel',e=>{e.preventDefault();S.tDist+=e.deltaY*.006;S.tDist=Math.max(R*1.6,Math.min(R*5,S.tDist));},{passive:false});
-let ltd=0;cv2.addEventListener('touchstart',e=>{if(e.touches.length===2)ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);},{passive:true});
-cv2.addEventListener('touchmove',e=>{if(e.touches.length===2){const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);S.tDist-=(d-ltd)*.015;S.tDist=Math.max(R*1.6,Math.min(R*5,S.tDist));ltd=d;}},{passive:true});
+// Pinch-to-zoom
+let ltd=0;
+cv2.addEventListener('touchstart',e=>{
+  _activeTouches=e.touches.length;
+  if(e.touches.length===2)ltd=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+},{passive:true});
+cv2.addEventListener('touchmove',e=>{
+  if(e.touches.length===2){
+    const d=Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+    S.tDist-=(d-ltd)*.018;// slightly more sensitive pinch on mobile
+    S.tDist=Math.max(R*1.6,Math.min(R*5,S.tDist));ltd=d;
+  }
+},{passive:true});
+cv2.addEventListener('touchend',e=>{_activeTouches=e.touches.length;},{passive:true});
 
 function doHover(e){_m.set(S.mx,S.my);ray.setFromCamera(_m,camera);const h=ray.intersectObjects(markers);const tip=document.getElementById('tip');if(h.length>0&&h[0].object.visible){const b=h[0].object.userData.bird;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY-8)+'px';tip.querySelector('.z').textContent=b.z;tip.querySelector('.e').textContent=b.e;cv2.style.cursor='pointer';if(S.hovered&&S.hovered!==h[0].object)S.hovered.scale.set(.22,.22,1);S.hovered=h[0].object;}else{tip.style.display='none';if(!S.mouseDown)cv2.style.cursor='grab';if(S.hovered){S.hovered.scale.set(.22,.22,1);S.hovered=null;}}}
 function doClick(e){
@@ -461,8 +562,9 @@ function doClick(e){
   const nx=(e.clientX/innerWidth)*2-1,ny=-(e.clientY/innerHeight)*2+1;
   _m.set(nx,ny);ray.setFromCamera(_m,camera);const h=ray.intersectObjects(markers);
   if(h.length>0&&h[0].object.visible){showPopup(h[0].object.userData.bird);return;}
-  // Proximity fallback: find nearest visible marker within ~0.07 NDC (~4% screen) to forgive imprecise clicks
-  let best=null,bestD=0.07;
+  // Proximity fallback: wider radius on touch (fat fingers) vs mouse
+  const proximityR=isTouchDevice()?0.13:0.07;
+  let best=null,bestD=proximityR;
   markers.forEach(m=>{
     if(!m.visible)return;
     const p=m.position.clone().project(camera);
@@ -588,9 +690,40 @@ fetchBirdImg(bird.s,bird.e).then(url=>{
   img.src=url;img.style.display='block';spin.style.display='none';
 }).catch(()=>{spin.style.display='none';});
 if(!S.muted)playSound(bird);}
-document.getElementById('pop-close').onclick=()=>{document.getElementById('popup').style.display='none';stopSound();S.bird=null;};
+const _closePopup=()=>{const p=document.getElementById('popup');p.style.display='none';stopSound();S.bird=null;};
+document.getElementById('pop-close').onclick=_closePopup;
 document.getElementById('pop-play').onclick=()=>{if(S.bird)playSound(S.bird);};
 document.getElementById('pop-wiki').onclick=()=>{if(S.bird)window.open(`https://en.wikipedia.org/wiki/${encodeURIComponent(S.bird.s)}`,'_blank');};
+
+// ── Swipe-down to dismiss popup on mobile ──────────────────────────────────
+(()=>{
+  const pop=document.getElementById('popup');
+  let _sy=0,_dy=0,_tracking=false;
+  pop.addEventListener('touchstart',e=>{
+    // Only swipe-to-close from the top drag-handle area (top 48px)
+    if(e.touches[0].clientY-pop.getBoundingClientRect().top<48){
+      _sy=e.touches[0].clientY;_dy=0;_tracking=true;
+    }
+  },{passive:true});
+  pop.addEventListener('touchmove',e=>{
+    if(!_tracking)return;
+    _dy=e.touches[0].clientY-_sy;
+    if(_dy>0){pop.style.transform=`translateY(${_dy}px)`;pop.style.transition='none';}
+  },{passive:true});
+  pop.addEventListener('touchend',()=>{
+    if(!_tracking)return;_tracking=false;
+    if(_dy>80){
+      pop.style.transition='transform .25s ease';
+      pop.style.transform='translateY(100%)';
+      setTimeout(_closePopup,260);
+    }else{
+      pop.style.transition='transform .2s ease';
+      pop.style.transform='';
+      setTimeout(()=>{pop.style.transition='';},210);
+    }
+    _dy=0;
+  },{passive:true});
+})();
 async function playSound(bird){
   stopSound();
   const btn=document.getElementById('pop-play');
