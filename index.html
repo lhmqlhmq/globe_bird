@@ -782,25 +782,26 @@ self.onmessage=async e=>{
         const cW=x1-x0+1,cH=y1-y0+1;
         const c2=document.createElement('canvas');c2.width=cW;c2.height=cH;
         c2.getContext('2d').drawImage(cv,-x0,-y0);
-        // Soft oval feather: removes hard rectangular corners, blends edges into globe
+        // Elliptical feather matched to image aspect ratio (scale trick: circle→ellipse)
+        // This avoids cutting wing-tips on wide birds or head/tail on tall birds.
         const fc=c2.getContext('2d',{willReadFrequently:true});
-        const cx=cW/2,cy=cH/2,ri=Math.min(cW,cH)*.28,ro=Math.max(cW,cH)*.58;
-        const grd=fc.createRadialGradient(cx,cy,ri,cx,cy,ro);
-        grd.addColorStop(0,'rgba(0,0,0,1)');grd.addColorStop(.55,'rgba(0,0,0,1)');
-        grd.addColorStop(.80,'rgba(0,0,0,.55)');grd.addColorStop(1,'rgba(0,0,0,0)');
-        fc.globalCompositeOperation='destination-in';fc.fillStyle=grd;fc.fillRect(0,0,cW,cH);
-        fc.globalCompositeOperation='source-over';
+        fc.save();fc.translate(cW/2,cH/2);fc.scale(cW/2,cH/2);
+        const grd=fc.createRadialGradient(0,0,.42,0,0,1.08);
+        grd.addColorStop(0,'rgba(0,0,0,1)');grd.addColorStop(.52,'rgba(0,0,0,1)');
+        grd.addColorStop(.78,'rgba(0,0,0,.55)');grd.addColorStop(1,'rgba(0,0,0,0)');
+        fc.globalCompositeOperation='destination-in';fc.fillStyle=grd;fc.fillRect(-1,-1,2,2);
+        fc.restore();fc.globalCompositeOperation='source-over';
         return{canvas:c2,aspect:cW/cH};
       }
     }
-    // Feathered circular fallback (rf < 0.20 or bounding box failed)
+    // Elliptical feathered fallback (rf < 0.20: color-distance couldn't isolate bird)
     ctx.clearRect(0,0,W,H);ctx.drawImage(imgEl,0,0,W,H);
-    const r=Math.min(W,H)/2-2;
-    const grd2=ctx.createRadialGradient(W/2,H/2,r*.5,W/2,H/2,r);
-    grd2.addColorStop(0,'rgba(0,0,0,1)');grd2.addColorStop(.65,'rgba(0,0,0,.95)');
-    grd2.addColorStop(.88,'rgba(0,0,0,.45)');grd2.addColorStop(1,'rgba(0,0,0,0)');
-    ctx.globalCompositeOperation='destination-in';ctx.fillStyle=grd2;ctx.fillRect(0,0,W,H);
-    ctx.globalCompositeOperation='source-over';
+    ctx.save();ctx.translate(W/2,H/2);ctx.scale(W/2,H/2);
+    const grd2=ctx.createRadialGradient(0,0,.45,0,0,1.05);
+    grd2.addColorStop(0,'rgba(0,0,0,1)');grd2.addColorStop(.6,'rgba(0,0,0,.95)');
+    grd2.addColorStop(.85,'rgba(0,0,0,.4)');grd2.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.globalCompositeOperation='destination-in';ctx.fillStyle=grd2;ctx.fillRect(-1,-1,2,2);
+    ctx.restore();ctx.globalCompositeOperation='source-over';
     return{canvas:cv,aspect:W/H};
   }
 
